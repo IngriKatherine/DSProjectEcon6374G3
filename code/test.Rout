@@ -17,9 +17,23 @@ Type 'demo()' for some demos, 'help()' for on-line help, or
 'help.start()' for an HTML browser interface to help.
 Type 'q()' to quit R.
 
+[Previously saved workspace restored]
+
 > print("Hello")
 [1] "Hello"
 > 
+> print("whatever")
+[1] "whatever"
+> 
+> library(arrow)
+
+Attaching package: 'arrow'
+
+The following object is masked from 'package:utils':
+
+    timestamp
+
+> 
 > proc.time()
    user  system elapsed 
-   0.14    0.04    0.18 
+   0.51    0.18    0.65 

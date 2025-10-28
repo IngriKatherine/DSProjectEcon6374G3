@@ -1,0 +1,106 @@
+
+R version 4.5.1 (2025-06-13 ucrt) -- "Great Square Root"
+Copyright (C) 2025 The R Foundation for Statistical Computing
+Platform: x86_64-w64-mingw32/x64
+
+R is free software and comes with ABSOLUTELY NO WARRANTY.
+You are welcome to redistribute it under certain conditions.
+Type 'license()' or 'licence()' for distribution details.
+
+  Natural language support but running in an English locale
+
+R is a collaborative project with many contributors.
+Type 'contributors()' for more information and
+'citation()' on how to cite R or R packages in publications.
+
+Type 'demo()' for some demos, 'help()' for on-line help, or
+'help.start()' for an HTML browser interface to help.
+Type 'q()' to quit R.
+
+[Previously saved workspace restored]
+
+> ###### Preamble
+> ## Description:
+> # This code opens the raw dataset downloaded from Snapshot National Loan Level Dataset
+> # 2021 and 2023
+> # It filters the files to the states TX, LA
+> # Exports the dataset as a parquet file to save space
+> 
+> #Clean space
+> rm(list = ls())
+> 
+> #Libraries
+> library(dplyr)
+
+Attaching package: 'dplyr'
+
+The following objects are masked from 'package:stats':
+
+    filter, lag
+
+The following objects are masked from 'package:base':
+
+    intersect, setdiff, setequal, union
+
+> library(tidyverse)
+── Attaching core tidyverse packages ──────────────────────── tidyverse 2.0.0 ──
+✔ forcats   1.0.0     ✔ readr     2.1.5
+✔ ggplot2   4.0.0     ✔ stringr   1.5.1
+✔ lubridate 1.9.4     ✔ tibble    3.3.0
+✔ purrr     1.1.0     ✔ tidyr     1.3.1
+── Conflicts ────────────────────────────────────────── tidyverse_conflicts() ──
+✖ dplyr::filter() masks stats::filter()
+✖ dplyr::lag()    masks stats::lag()
+ℹ Use the conflicted package (<http://conflicted.r-lib.org/>) to force all conflicts to become errors
+> library(arrow)
+
+Attaching package: 'arrow'
+
+The following object is masked from 'package:lubridate':
+
+    duration
+
+The following object is masked from 'package:utils':
+
+    timestamp
+
+> 
+> #Directory
+> getwd()
+[1] "C:/Users/k_the/main/01_prob_stat/DataScienceProjectEcon6374Group3/code"
+> setwd("..")
+> 
+> ###### Read 2021
+> lar2021 <- read.csv("raw_data/2021_public_lar.csv", header = TRUE)
+> TXLA2021 <- lar2021[lar2021$state_code == "TX" | lar2021$state_code == "LA", ]
+> #Remove large DB
+> rm(lar2021)
+> # Dimension
+> print(dim(TXLA2021))
+[1] 2434330      99
+> 
+> ###### Read 2023
+> lar2023 <- read.csv("raw_data/2023_public_lar_csv.csv", header = TRUE)
+> TXLA2023 <- lar2023[lar2023$state_code == "TX" | lar2023$state_code == "LA", ]
+> #Remove large DB
+> rm(lar2023)
+> # Dimension
+> print(dim(TXLA2023))
+[1] 1413632      99
+> 
+> #### APPEND 2021 & 2023
+> TXLA <- rbind(TXLA2021, TXLA2023)
+> #Clean up
+> rm(lar2021)
+Warning message:
+In rm(lar2021) : object 'lar2021' not found
+> rm(lar2023)
+Warning message:
+In rm(lar2023) : object 'lar2023' not found
+> 
+> ###### Export Final DB
+> write_parquet(TXLA, "proc_data/TXLA_2021_2023.parquet")
+> 
+> proc.time()
+   user  system elapsed 
+1088.62  488.67 1953.95 
