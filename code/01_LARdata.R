@@ -16,7 +16,7 @@ library(openxlsx)
 
 #Directory
 getwd()
-#setwd("..")
+setwd("..")
 
 ###### FUNCTION INITIAL CLEANING ALL STATES ######
 process_lar_year <- function(year) {
@@ -43,10 +43,9 @@ process_lar_year <- function(year) {
   
   # 5. Convert Interest Rate and Loan Amount to Numeric
   # and Fix debt to income ratio variable
-  # Convert key numeric fields to numeric
   lar$interest_rate <- suppressWarnings(as.numeric(lar$interest_rate))
   lar$loan_amount   <- suppressWarnings(as.numeric(lar$loan_amount))
-
+  
   lar <- lar %>%
     mutate(
       # Step 1: numeric "minimum DTI" using gsub + first 2 digits
