@@ -185,9 +185,90 @@ temp2 = temp2%>%
 FBITC = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
 rm(temp2)
 
+###### High School Graduate or Higher (5-year estimate) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 High School Graduate or Higher (5-year estimate) by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "HC01ESTVC16"
+  )
+var_label(temp2$HC01ESTVC16) = "High School Graduate or Higher (5-year estimate)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+HC01ESTVC16 = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### SNAP Benefits Recipients ######
+## IT DOES NOT HAVE 2023!!! THE LAST INFORMATION IS 2022
+temp0=read.csv("raw_data/2021-01-01 to 2022-01-01 SNAP Benefits Recipients by County (Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01")]
+temp1$year=2021
+
+#clean
+temp2 = temp1 %>%
+  rename(county_code = Region.Code) %>%
+  rename(SNAPBR = X2021.01.01) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"))
+
+rm(temp0, temp1)
+
+var_label(temp2$SNAPBR) = "SNAP Benefits Recipients"
+
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+SNAPBR = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Resident Population by County (Thousands of Persons) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Resident Population by County (Thousands of Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "POPULATION"
+  )
+var_label(temp2$POPULATION) = "Resident Population by County (Thousands of Persons)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+POPULATION = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
 #################################################
 ###### Combine ALL ######
-FREDTXLA <- list(EQFXSUBPRIME, MEDAONMACOUNTY, HOWNRATEACS, PPAAWY, B080ACS, FBITC) %>%
+FREDTXLA <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+                 HOWNRATEACS, PPAAWY, B080ACS, 
+                 FBITC, HC01ESTVC16, SNAPBR, POPULATION) %>%
   reduce(full_join, by = c("year", "county_code", "state"))
 
 write_parquet(FREDTXLA, "proc_data/FRED_LATX.parquet")

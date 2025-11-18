@@ -30,8 +30,10 @@ api_key <- "93bb570ff595df729802a42870fb9436"
 
 build_series_id <- function(prefix, county) {
   if (prefix == "PPAAWY") {
-    # Special case: PPAAWY + {county} + A156NCEN
     paste0(prefix, county, "A156NCEN")
+  } 
+  if (prefix == "CBR") {
+      paste0(prefix, county, "CAA647NCEN")
   } else {
     # Standard case: prefix + {county}
     paste0(prefix, county)
@@ -144,7 +146,9 @@ download_fred_for_counties <- function(
       "HOWNRATEACS0",
       "PPAAWY",       # special case
       "B080ACS0",
-      "FBITC0" # This one only has data until 2021
+      "FBITC0", # This one only has data until 2021
+      "HC01ESTVC16",
+      "CBR" #another special case
     ),
     county_codes           = NULL,
     start_date             = "2021-01-01",
