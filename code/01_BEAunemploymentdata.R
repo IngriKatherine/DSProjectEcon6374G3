@@ -14,8 +14,8 @@ library(tidyr)
 library(arrow)
 
 #Directory
-#getwd()
-#setwd("..")
+getwd()
+setwd("..")
 
 ###### LOUISIANA  ######
 ## Read txt downloaded from https://download.bls.gov/pub/time.series/la/la.data.25.Louisiana
