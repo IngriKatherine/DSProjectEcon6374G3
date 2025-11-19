@@ -9,6 +9,7 @@ rm(list = ls())
 library(dplyr)
 library(tidyverse)
 library(arrow)
+library(ggplot2)
 
 #Directory
 getwd()
@@ -21,13 +22,16 @@ g3lar <- read_parquet("~/GitHub/DSProjectEcon6374G3/proc_data/g3lar.parquet")
 str(g3lar)
 summary(g3lar)
 table(g3lar$state_code, useNA = "ifany")
+
+####
 #6a
+#Recode variable
 g3lar$loan_type_label <- recode(g3lar$loan_type,
                              "1" = "Conventional",
                              "2" = "FHA",
                              "3" = "VA",
                              "4" = "USDA")
-
+#table creation ad output
 table_6a <- g3lar %>%
   group_by(loan_type_label) %>%
   summarize(
@@ -35,15 +39,15 @@ table_6a <- g3lar %>%
     max_value  = max(loan_amount, na.rm = TRUE),
     mean_value = mean(loan_amount, na.rm = TRUE)
   )
-
 table_6a
 
+#6b
+#Finding mean loan value
 avg_plot_data <- g3lar %>%
   group_by(state_code, activity_year, loan_type_label) %>%
   summarize(avg_value = mean(loan_amount, na.rm = TRUE))
 
-library(ggplot2)
-#6b
+#Grouped bar chart
 ggplot(avg_plot_data, aes(x = state_code, y = avg_value, fill = loan_type_label)) +
   geom_bar(stat = "identity", position = "dodge") +
   geom_text(aes(label = round(avg_value, 0)),
@@ -61,24 +65,29 @@ ggplot(avg_plot_data, aes(x = state_code, y = avg_value, fill = loan_type_label)
     breaks = seq(0, 400000, 50000),
     labels = scales::comma) +
   theme_bw()
+
 #6c
+#Record Variable
 g3lar$property_type <- recode(g3lar$construction_method,
                                  "1" = "Site-built",
                                  "2" = "Manufactured housing")
+#table creation and output
 table_6c <- g3lar %>%
   group_by(activity_year, property_type) %>%
   summarize(avg_value = mean(loan_amount, na.rm = TRUE))
-
 table_6c
 
 
 #6d
+#Table creation and output
 table_6d <- table(g3lar$action_taken, g3lar$occupancy_type, useNA = "always")
 table_6d
 
+#checking not % applicable, none were found
 percent_not_applicable <- mean(g3lar$action_taken == "Not Applicable", na.rm = TRUE)
 percent_not_applicable
 
+#Graph creation, bar chart was chosen 
 ggplot(g3lar, aes(x = action_taken, fill = occupancy_type)) +
   geom_bar(position = "dodge") + 
   geom_text(
@@ -99,8 +108,8 @@ ggplot(g3lar, aes(x = action_taken, fill = occupancy_type)) +
     labels = scales::comma) +
  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-#Due to the large differnce in Values, it was difficult to see certain variables on the bar chart, so
-# we added separate bar charts for each occupancy type
+#Due to the large difference in Values, it was difficult to see certain variables on the bar chart, so
+# we added separate bar charts for each occupancy type for better comparison
 ggplot(g3lar %>% filter(occupancy_type == "Principal residence"), 
        aes(x = action_taken)) +
   geom_bar(fill = "red") +
@@ -108,7 +117,7 @@ ggplot(g3lar %>% filter(occupancy_type == "Principal residence"),
     stat = "count",
     aes(label = ..count..),
     vjust = -0.3,
-    size = 3
+    size = 5
   ) +
   labs(
     title = "Action Taken — Principal Residence",
@@ -125,7 +134,7 @@ ggplot(g3lar %>% filter(occupancy_type == "Second residence"),
     stat = "count",
     aes(label = ..count..),
     vjust = -0.3,
-    size = 3
+    size = 5
   ) +
   labs(
     title = "Action Taken — Second Residence",
@@ -142,7 +151,7 @@ ggplot(g3lar %>% filter(occupancy_type == "Investment property"),
     stat = "count",
     aes(label = ..count..),
     vjust = -0.3,
-    size = 3
+    size = 5
   ) +
   labs(
     title = "Action Taken — Investment Property",
