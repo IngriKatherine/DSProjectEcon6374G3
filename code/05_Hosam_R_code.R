@@ -128,8 +128,3 @@ pct_ethnicity_not_app
 # such as 'Loan originated' (275,126 cases), and much lower in others.
 # This uneven pattern indicates that missing ethnicity is systematic, not random.
 
-
-# Note for Q5(e):
-# The provided dataset does not contain any applicant age variable.
-# Therefore, it is not possible to produce the requested two-way table
-# of action taken by applicant age or compute percentages by age group.
