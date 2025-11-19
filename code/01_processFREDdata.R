@@ -330,25 +330,5 @@ dfs_clean <- dfs_flagged %>%
 rm(list = ls())
 gc()
 
-#################################################
-###### Create Additional variables ######
-FREDTXLA <- read_parquet("proc_data/FRED_LATX.parquet")
-
-# A new variable “Commute Time Bins” with values of “Low” if below 20 minutes, 
-#“Middle” if the value is between 20-40, and “High” above 40.
-FREDTXLA <- FREDTXLA %>%
-  rename(commute_time_mean = B080ACS) %>%
-  mutate(
-    commute_time_bins = cut(
-      commute_time_mean,
-      breaks = c(-Inf, 20, 40, Inf),
-      labels = c("Low", "Middle", "High"),
-      right = TRUE
-    )
-  )
-
-# number of loans per capita (total divided by population).
-# number of high school graduates per capita (total divided by population).
-
 #End of R-script
 
