@@ -15,6 +15,7 @@ library(arrow)
 library(openxlsx)
 library(stringr)
 library(labelled)
+library(purrr)
 
 #Directory
 getwd()
@@ -273,9 +274,81 @@ FREDTXLA <- list(EQFXSUBPRIME, MEDAONMACOUNTY,
 
 write_parquet(FREDTXLA, "proc_data/FRED_LATX.parquet")
 
+###### TEMPORAL PROCESS TO IDENTIFY MISMATCHED DATA ######
+dfs <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+            HOWNRATEACS, PPAAWY, B080ACS, 
+            FBITC, HC01ESTVC16, SNAPBR, POPULATION)
+key_index <- imap_dfr(
+  dfs,
+  ~ .x %>%
+    mutate(tmp_id = row_number(), dataset = .y) %>%
+    select(dataset, tmp_id, year, county_code)
+)
+key_counts <- key_index %>%
+  group_by(year, county_code) %>%
+  mutate(n_datasets = n_distinct(dataset)) %>%
+  ungroup() %>%
+  mutate(unmatched = n_datasets == 1L) 
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    dataset_name <- deparse(substitute(.x))  # not actually needed, we use .y below
+  }
+)
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    this_name <- .y
+    flags <- key_counts %>%
+      filter(dataset == this_name) %>%
+      select(tmp_id, unmatched)
+    
+    .x %>%
+      mutate(tmp_id = row_number()) %>%
+      left_join(flags, by = "tmp_id") %>%
+      mutate(unmatched = if_else(is.na(unmatched), FALSE, unmatched))
+  }
+)
+unmatched_summary <- key_counts %>%
+  filter(unmatched) %>%                # only problematic rows
+  count(dataset, name = "n_unmatched")
+
+unmatched_summary
+
+unmatched_by_year <- key_counts %>%
+  filter(unmatched) %>%
+  count(dataset, year, name = "n_unmatched")
+
+unmatched_by_year
+
+dfs_clean <- dfs_flagged %>%
+  map(~ select(.x, -tmp_id))
+
 #Free unused memory and R.Data
 rm(list = ls())
 gc()
+
+#################################################
+###### Create Additional variables ######
+FREDTXLA <- read_parquet("proc_data/FRED_LATX.parquet")
+
+# A new variable “Commute Time Bins” with values of “Low” if below 20 minutes, 
+#“Middle” if the value is between 20-40, and “High” above 40.
+FREDTXLA <- FREDTXLA %>%
+  rename(commute_time_mean = B080ACS) %>%
+  mutate(
+    commute_time_bins = cut(
+      commute_time_mean,
+      breaks = c(-Inf, 20, 40, Inf),
+      labels = c("Low", "Middle", "High"),
+      right = TRUE
+    )
+  )
+
+# number of loans per capita (total divided by population).
+# number of high school graduates per capita (total divided by population).
 
 #End of R-script
 

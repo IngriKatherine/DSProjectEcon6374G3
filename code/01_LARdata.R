@@ -262,9 +262,7 @@ process_lar_year <- function(year) {
   ##  Small additional cleaning
   # Pad the county code digit to have leading 0ros
   g3lar$county_code <- sprintf("%05d", g3lar$county_code)
-  #Keep only the first 3 digits
-  g3lar$county_code <- substr(g3lar$county_code, 1, 3)
-  
+
   return(g3lar)
 }
 
