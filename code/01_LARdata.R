@@ -34,7 +34,9 @@ process_lar_year <- function(year) {
     "action_taken","purchaser_type", "loan_type","loan_purpose",
     "reverse_mortgage", "open_end_line_of_credit",
     "business_or_commercial_purpose", "loan_amount",
-    "interest_rate", "debt_to_income_ratio", "occupancy_type"
+    "interest_rate", "debt_to_income_ratio", "occupancy_type", "applicant_age", 
+    "manufactured_home_secured_property_type",
+    "manufactured_home_land_property_interest", "hoepa_status"
   )
   lar <- lar[varstokeep]
   
@@ -198,6 +200,38 @@ process_lar_year <- function(year) {
           "Investment property"
         )
       ),
+      # Property Type
+      manufactured_home_secured_property_type = factor(
+        manufactured_home_secured_property_type,
+        levels = c(1, 2, 3),
+        labels = c(
+          "Manufactured home and land",
+          "Manufactured home and not land",
+          "Not applicable"
+        )
+      ),
+      # Property Type
+      manufactured_home_land_property_interest = factor(
+        manufactured_home_land_property_interest,
+        levels = c(1, 2, 3, 4, 5),
+        labels = c(
+          "Direct ownership",
+          "Indirect ownership",
+          "Paid leasehold",
+          "Unpaid leasehold",
+          "Not applicable"
+        )
+      ),
+      # Hoepa Status
+      hoepa_status = factor(
+        hoepa_status,
+        levels = c(1, 2, 3),
+        labels = c(
+          "High-cost mortgage",
+          "Not a high-cost mortgage",
+          "Not applicable"
+        )
+      ),
     )
   
   # 7. Add variable labels
@@ -218,7 +252,11 @@ process_lar_year <- function(year) {
     debt_to_income_ratio            = "Debt-to-Income Ratio",
     construction_method             = "Construction Method",
     occupancy_type                  = "Occupancy Type",
-    g3                              = "Dummy Group 3 States"
+    g3                              = "Dummy Group 3 States",
+    applicant_age                   = "Applicant age",
+    manufactured_home_secured_property_type ="Manufactured Home Secured Property Type",
+    manufactured_home_land_property_interest ="Manufactured Home Land Property Interest",
+    hoepa_status ="Home Ownership and Equity Protection Act of 1994"
   )
   
   for (v in names(var_labels)) {
@@ -262,9 +300,7 @@ process_lar_year <- function(year) {
   ##  Small additional cleaning
   # Pad the county code digit to have leading 0ros
   g3lar$county_code <- sprintf("%05d", g3lar$county_code)
-  #Keep only the first 3 digits
-  g3lar$county_code <- substr(g3lar$county_code, 1, 3)
-  
+
   return(g3lar)
 }
 

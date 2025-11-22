@@ -1,0 +1,334 @@
+###### Preamble
+## Description:
+# This code opens the raw dataset downloaded from Snapshot National Loan Level Dataset
+# 2021 and 2023
+# It filters the files to the states TX, LA
+# Exports the dataset as a parquet file to save space
+
+#Clean space
+rm(list = ls())
+
+#Libraries
+library(dplyr)
+library(tidyverse)
+library(arrow)
+library(openxlsx)
+library(stringr)
+library(labelled)
+library(purrr)
+
+#Directory
+getwd()
+setwd("..")
+
+###### Equifax Subprime Credit data ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-12-31 Equifax Subprime Credit Population by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.10.01", "X2023.10.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "EQFXSUBPRIME"
+  )
+var_label(temp2$EQFXSUBPRIME) = "Equifax Subprime Credit data - Q4"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+EQFXSUBPRIME = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Market Hotness: Median Days on Market ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-12-31 Market Hotness_ Median Days on Market by County (Days).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.12.01", "X2023.12.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "MEDAONMACOUNTY"
+  )
+var_label(temp2$MEDAONMACOUNTY) = "Market Hotness: Median Days on Market - EOY M12"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+MEDAONMACOUNTY = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Homeownership Rate (5-year estimate) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Homeownership Rate (5-year estimate) by County (Rate).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "HOWNRATEACS"
+  )
+var_label(temp2$HOWNRATEACS) = "Homeownership Rate (5-year estimate)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+HOWNRATEACS = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+
+rm(temp2)
+
+
+###### Estimated Percent of People of All Ages in Poverty ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Estimated Percent of People of All Ages in Poverty by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "PPAAWY"
+  )
+var_label(temp2$PPAAWY) = "Estimated Percent of People of All Ages in Poverty"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+PPAAWY = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Mean Commuting Time for Workers ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Mean Commuting Time for Workers (5-year estimate) by County (Minutes).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "B080ACS"
+  )
+var_label(temp2$B080ACS) = "Mean Commuting Time for Workers"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+B080ACS = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Combined Violent and Property Crime Offenses Known to Law Enforcement ######
+## IT DOES NOT HAVE 2023!!! THE LAST INFORMATION IS 2021
+temp0=read.csv("raw_data/2020-01-01 to 2021-01-01 Combined Violent and Property Crime Offenses Known to Law Enforcement by County (Known Offenses).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01")]
+temp1$year=2021
+
+#clean
+temp2 = temp1 %>%
+  rename(county_code = Region.Code) %>%
+  rename(FBITC = X2021.01.01) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"))
+
+rm(temp0, temp1)
+
+var_label(temp2$FBITC) = "Combined Violent and Property Crime Offenses Known to Law Enforcement"
+
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+FBITC = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### High School Graduate or Higher (5-year estimate) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 High School Graduate or Higher (5-year estimate) by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "HC01ESTVC16"
+  )
+var_label(temp2$HC01ESTVC16) = "High School Graduate or Higher (5-year estimate)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+HC01ESTVC16 = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### SNAP Benefits Recipients ######
+## IT DOES NOT HAVE 2023!!! THE LAST INFORMATION IS 2022
+temp0=read.csv("raw_data/2021-01-01 to 2022-01-01 SNAP Benefits Recipients by County (Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01")]
+temp1$year=2021
+
+#clean
+temp2 = temp1 %>%
+  rename(county_code = Region.Code) %>%
+  rename(SNAPBR = X2021.01.01) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"))
+
+rm(temp0, temp1)
+
+var_label(temp2$SNAPBR) = "SNAP Benefits Recipients"
+
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+SNAPBR = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Resident Population by County (Thousands of Persons) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Resident Population by County (Thousands of Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "POPULATION"
+  )
+var_label(temp2$POPULATION) = "Resident Population by County (Thousands of Persons)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+POPULATION = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+#################################################
+###### Combine ALL ######
+FREDTXLA <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+                 HOWNRATEACS, PPAAWY, B080ACS, 
+                 FBITC, HC01ESTVC16, SNAPBR, POPULATION) %>%
+  reduce(full_join, by = c("year", "county_code", "state"))
+
+write_parquet(FREDTXLA, "proc_data/FRED_LATX.parquet")
+
+###### TEMPORAL PROCESS TO IDENTIFY MISMATCHED DATA ######
+dfs <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+            HOWNRATEACS, PPAAWY, B080ACS, 
+            FBITC, HC01ESTVC16, SNAPBR, POPULATION)
+key_index <- imap_dfr(
+  dfs,
+  ~ .x %>%
+    mutate(tmp_id = row_number(), dataset = .y) %>%
+    select(dataset, tmp_id, year, county_code)
+)
+key_counts <- key_index %>%
+  group_by(year, county_code) %>%
+  mutate(n_datasets = n_distinct(dataset)) %>%
+  ungroup() %>%
+  mutate(unmatched = n_datasets == 1L) 
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    dataset_name <- deparse(substitute(.x))  # not actually needed, we use .y below
+  }
+)
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    this_name <- .y
+    flags <- key_counts %>%
+      filter(dataset == this_name) %>%
+      select(tmp_id, unmatched)
+    
+    .x %>%
+      mutate(tmp_id = row_number()) %>%
+      left_join(flags, by = "tmp_id") %>%
+      mutate(unmatched = if_else(is.na(unmatched), FALSE, unmatched))
+  }
+)
+unmatched_summary <- key_counts %>%
+  filter(unmatched) %>%                # only problematic rows
+  count(dataset, name = "n_unmatched")
+
+unmatched_summary
+
+unmatched_by_year <- key_counts %>%
+  filter(unmatched) %>%
+  count(dataset, year, name = "n_unmatched")
+
+unmatched_by_year
+
+dfs_clean <- dfs_flagged %>%
+  map(~ select(.x, -tmp_id))
+
+#Free unused memory and R.Data
+rm(list = ls())
+gc()
+
+#End of R-script
+

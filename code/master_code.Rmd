@@ -1,0 +1,419 @@
+---
+title: "Data Science Project"
+author: "Group 3:
+          Ingri Quevedo
+          Hussein Youssef
+          Hosam Alghuwairi
+          Mohammed Saad B Al Alshaykh "
+date: "2025-11-30"
+output:
+   rmdformats::readthedown:
+     code_folding: show
+     number_sections: true
+     toc_depth: 3
+     toc_float: yes
+---
+```{r init, include=F}
+library(arrow)
+library(ggplot2)
+library(ezids)
+library(labelled)
+library(gtsummary)
+library(openxlsx)
+library(dplyr)
+library(tidyr)
+library(broom)
+library(knitr)
+library(patchwork)
+library(vctrs)
+library(tibble)
+library(readxl)
+library(kableExtra)
+
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE,
+  results = "markup")
+options(scientific=T, digits = 3) 
+
+# Set the root directory for all code chunks (important for reading files)
+#knitr::opts_knit$set(root.dir = "/Users/akashreddyashanna/Desktop/Fall 2025/Intro to DS/DataScienceProject")
+knitr::opts_knit$set(root.dir = "..")
+
+```
+
+# FFIEC’s Home Mortgage Disclosure Act (HMDA) Loan/Application Register (LAR)
+
+```{r, eval=FALSE}
+###### FUNCTION INITIAL CLEANING ALL STATES ######
+process_lar_year <- function(year) {
+  # 1. Read in data
+  file_path <- sprintf("raw_data/%d_public_lar.csv", year)
+  lar <- read.csv(file_path, header = TRUE)
+  
+  # 2. Drop missings in state
+  lar <- lar[!is.na(lar$state_code), ]
+  
+  # 3. Keep only the variables we need
+  varstokeep <- c(
+    "activity_year", "state_code","county_code", 
+    "construction_method", "derived_ethnicity", 
+    "action_taken","purchaser_type", "loan_type","loan_purpose",
+    "reverse_mortgage", "open_end_line_of_credit",
+    "business_or_commercial_purpose", "loan_amount",
+    "interest_rate", "debt_to_income_ratio", "occupancy_type"
+  )
+  lar <- lar[varstokeep]
+  
+  # 4. Create variable that identifies Group 3 states
+  lar$g3 <- ifelse(lar$state_code == "TX" | lar$state_code == "LA", 1, 0)
+  
+  # 5. Convert Interest Rate and Loan Amount to Numeric
+  # and Fix debt to income ratio variable
+  lar$interest_rate <- suppressWarnings(as.numeric(lar$interest_rate))
+  lar$loan_amount   <- suppressWarnings(as.numeric(lar$loan_amount))
+  
+  lar <- lar %>%
+    mutate(
+      # Step 1: numeric "minimum DTI" using gsub + first 2 digits
+      dti_digits = gsub("[^0-9]", "", debt_to_income_ratio),                 
+      dti_min    = suppressWarnings(as.numeric(substr(dti_digits, 1, 2))),
+      
+      # Step 2: assign everything (ranges + exact values) into interval buckets
+      debt_to_income_ratio = case_when(
+        debt_to_income_ratio %in% c("Exempt") ~ "Exempt",
+        !is.na(dti_min) & dti_min < 20                ~ "<20%",
+        !is.na(dti_min) & dti_min >= 20 & dti_min < 30 ~ "20%-<30%",
+        !is.na(dti_min) & dti_min >= 30 & dti_min < 36 ~ "30%-<36%",
+        !is.na(dti_min) & dti_min >= 36 & dti_min < 50 ~ "36%-<50%",
+        !is.na(dti_min) & dti_min >= 50 & dti_min <= 60 ~ "50%-60%",
+        !is.na(dti_min) & dti_min > 60                ~ ">60%",
+        TRUE ~ NA_character_
+      ),
+      
+      # Make it an ordered factor in the desired order
+      debt_to_income_ratio = factor(
+        debt_to_income_ratio,
+        levels = c(
+          "<20%",
+          "20%-<30%",
+          "30%-<36%",
+          "36%-<50%",
+          "50%-60%",
+          ">60%",
+          "Exempt"
+        ),
+        ordered = TRUE
+      )
+    ) %>%
+    select(-dti_digits, -dti_min)
+  
+  # 6. Convert to factors and add levels to everything else
+  lar <- lar %>%
+    mutate(
+      #States Group3
+      g3 = factor(
+        g3,
+        levels = c(0,1),
+        labels = c(
+          "Other States",
+          "Texas and Louisiana"
+        )
+      ),
+      # Ethnicity of Applicant or Borrower
+      derived_ethnicity = factor(derived_ethnicity),
+      # Action Taken
+      action_taken = factor(
+        action_taken,
+        levels = 1:8,
+        labels = c(
+          "Loan originated",
+          "Application approved but not accepted",
+          "Application denied",
+          "Application withdrawn by applicant",
+          "File closed for incompleteness",
+          "Purchased loan",
+          "Preapproval request denied",
+          "Preapproval request approved but not accepted"
+        )
+      ),
+      # Purchaser Type
+      purchaser_type = factor(
+        purchaser_type,
+        levels = c(0, 1, 2, 3, 4, 5, 6, 71, 72, 8, 9),
+        labels = c(
+          "Not applicable",
+          "Fannie Mae",
+          "Ginnie Mae",
+          "Freddie Mac",
+          "Farmer Mac",
+          "Private securitizer",
+          "Commercial bank savings bank or savings association",
+          "Credit union mortgage company or finance company",
+          "Life insurance Company",
+          "Affiliate institution",
+          "Other type of purchaser"
+        )
+      ),
+      # Loan Type
+      loan_type = factor(
+        loan_type,
+        levels = c(1, 2, 3, 4),
+        labels = c(
+          "Conventional (not insured or guaranteed by FHA VA RHS or FSA)",
+          "Federal Housing Administration insured (FHA)",
+          "Veterans Affairs guaranteed (VA)",
+          "USDA RHS or FSA guaranteed"
+        )
+      ),
+      # Loan Purpose
+      loan_purpose = factor(
+        loan_purpose,
+        levels = c(1, 2, 31, 32, 4, 5),
+        labels = c(
+          "Home purchase",
+          "Home improvement",
+          "Refinancing",
+          "Cash-out refinancing",
+          "Other purpose",
+          "Not applicable"
+        )
+      ),
+      # Reverse Mortgage
+      reverse_mortgage = factor(
+        reverse_mortgage,
+        levels = c(1, 2),
+        labels = c(
+          "Reverse mortgage",
+          "Not a reverse mortgage"
+        )
+      ),
+      # Open-End Line of Credit
+      open_end_line_of_credit = factor(
+        open_end_line_of_credit,
+        levels = c(1, 2),
+        labels = c(
+          "Open-end line of credit",
+          "Not an open-end line of credit"
+        )
+      ),
+      # Business or Commercial Purpose
+      business_or_commercial_purpose = factor(
+        business_or_commercial_purpose,
+        levels = c(1, 2),
+        labels = c(
+          "Primarily for a business or commercial purpose",
+          "Not primarily for a business or commercial purpose"
+        )
+      ),
+      # Construction Method
+      construction_method = factor(
+        construction_method,
+        levels = c(1, 2),
+        labels = c(
+          "Site-built",
+          "Manufactured Home"
+        )
+      ),
+      # Occupancy Type
+      occupancy_type = factor(
+        occupancy_type,
+        levels = c(1, 2, 3),
+        labels = c(
+          "Principal residence",
+          "Second residence",
+          "Investment property"
+        )
+      ),
+    )
+  
+  # 7. Add variable labels
+  var_labels <- c(
+    activity_year                   = "Year",
+    state_code                      = "State 2dig code",
+    county_code                     = "County 5dig code",
+    derived_ethnicity               = "Ethnicity of Applicant or Borrower",
+    action_taken                    = "Action Taken",
+    purchaser_type                  = "Type of Purchaser",
+    loan_type                       = "Loan Type",
+    loan_purpose                    = "Loan Purpose",
+    reverse_mortgage                = "Reverse Mortgage",
+    open_end_line_of_credit         = "Open-End Line of Credit",
+    business_or_commercial_purpose  = "Business or Commercial Purpose",
+    loan_amount                     = "Loan Amount",
+    interest_rate                   = "Interest Rate",
+    debt_to_income_ratio            = "Debt-to-Income Ratio",
+    construction_method             = "Construction Method",
+    occupancy_type                  = "Occupancy Type",
+    g3                              = "Dummy Group 3 States"
+  )
+  
+  for (v in names(var_labels)) {
+    if (v %in% names(lar)) {
+      attr(lar[[v]], "label") <- var_labels[[v]]
+    }
+  }
+  
+  # 8. TABLE G3 vs OTHER
+  summary_g3vsoth <- lar %>%
+    group_by(g3) %>%
+    summarise(
+      median_loan_amount = median(loan_amount, na.rm = TRUE),
+      average_interest_rate = mean(interest_rate, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    # 2. Format for display
+    mutate(
+      # Dollar sign + commas (no decimals for loan amount, adjust if you want cents)
+      median_loan_amount = paste0(
+        "$", format(round(median_loan_amount, 0), big.mark = ",", scientific = FALSE)
+      ),
+      # Interest rate to 2 decimal places
+      average_interest_rate = sprintf("%.2f", average_interest_rate)
+    )
+  
+  # 3. Create a copy with "variable labels" as column names
+  summary_g3vsoth_export <- summary_g3vsoth
+  names(summary_g3vsoth_export) <- c(
+    "Group (G3 vs Other)",
+    "Median Loan Amount ($)",
+    "Average Interest Rate"
+  )
+  
+  # 4. Export to Excel
+  outname <- sprintf("output/comparison_g3vsother_%d.xlsx", year)
+  write.xlsx(summary_g3vsoth_export, file = outname, overwrite = TRUE)
+  # 9. FILTER TO ONLY THE STATES WE NEED
+  g3lar <- lar %>% filter(g3 == "Texas and Louisiana")
+  
+  ##  Small additional cleaning
+  # Pad the county code digit to have leading 0ros
+  g3lar$county_code <- sprintf("%05d", g3lar$county_code)
+
+  return(g3lar)
+}
+
+###### RUN BY YEAR ######
+
+## ---- 2021 ----
+g3lar2021 <- process_lar_year(2021)
+
+## ---- 2023 ----
+g3lar2023 <- process_lar_year(2023)
+
+###### APPEND 2021 & 2023 ######
+g3lar <- rbind(g3lar2021, g3lar2023)
+
+###### SAVE FINAL DATASET ######
+write_parquet(g3lar, "proc_data/g3lar.parquet")
+```
+
+## Median loan amount and Average interest rate. TX and LA vs other states
+```{r}
+res1 <- read_excel("output/comparison_g3vsother_2021.xlsx")
+res2 <- read_excel("output/comparison_g3vsother_2023.xlsx")
+kable(res1, format = "markdown", caption = "2021") %>%
+  kable_styling(full_width = FALSE)
+kable(res2, format = "markdown", caption = "2023") %>%
+  kable_styling(full_width = FALSE)
+
+```
+
+
+Provide the following statistical summaries by each state and year. 
+a.	Provide a table of minimum, maximum, and average loan amount by loan type. 
+i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like “FHA” not “2”). 
+b.	Provide the same information graphically. Provide a grouped bar chart with the average loan value by loan purpose grouped by state and year. Label the averages for each bar on the chart. 
+i.	Make sure loan type values read with appropriate labels inside the table produced by the software. (You can use a format or recode the variable, but for example 2 should be replaced with "Home improvement" in the table. 
+ii.	Do not plot “Not Applicable”. Filter these values out of the graph (but do not remove from main data set). 
+c.	Provide a table of the average value of Interest rate for 2020 and 2022 by property type.  
+i.	Make sure property type is a meaningful label. 
+d.	Provide a two-way table of the action taken on the loan by derived_ethnicity. 
+i.	Make sure that only the counts are in the table (no percentages, no row or column totals, ONLY counts) 
+ii.	Examine the “Not Available” category. What percentage of the data falls into this category? Does it the distribution of missing data look random over the different actions taken on loans? 
+e.	Provide a two-way table of the action taken on the loan by applicant_age. 
+i.	Make sure that only the percentages are in the table (no counts, no row or column totals, ONLY percentages) 
+ii.	Make sure Age labels are legible and meaningful. (9999 is not an age.)
+
+6.	Provide the following statistical summaries. 
+a.	Provide a table of minimum, maximum, and average loan value by loan type. 
+i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like FHA not “2”). 
+b.	Provide similar information graphically. Provide a grouped bar chart with the average loan value by loan type grouped by state and year. 
+i.	Label the averages for each bar on the chart. 
+c.	Provide a table of the average value of loans for 2023 and 2021 by property type. 
+i.	Make sure loan type values read with appropriate labels inside the table produced by the software. (You can use a format or recode the variable, but for example 2 should be replaced with "Manufactured housing" in the table. 
+d.	Provide a two-way table of the action taken on the loan by occupancy type. 
+i.	Make sure that only the counts are in the table (no percentages, no row or column totals, ONLY counts).
+ii.	Examine the “Not Applicable” category. What percentage of the data falls into this category? 
+iii.	Choose an appropriate graph to represent the data in this table. 
+
+7.	Do the following without creating a new dataset (i.e. filter the data): Based on summary statistics, is there any difference in the rates of “open-end_line_of_credit” by “derived_ethnicity” after applying the following filters: 
+a.	Loan type is equal to “Conventional”
+b.	Occupancy Type is equal to “Principal residence”
+c.	Loan Purpose is equal to “Home purchase”
+d.	Reverse Mortgage is “Not a reverse mortgage”
+
+8.	Create a new dataset that is summary statistics by year, state, and county. It should include: 
+a.	Average interest rate per county. 
+b.	Percentage of “actions taken” for loan origination (versus all other values). 
+c.	Percentage of debt_to_income_ratio that are less than 45%
+i.	This one will require recoding because of ranges.  Suggest using gsub to remove punctuation and then take the first two characters and make them a new variable. But we want the lowest percent for each one, you cannot just set the ranges to missing. 
+d.	Percentage of loans that are for Freddie Mac (Type of Purchaser)
+e.	Percentage of loans that are “business or commercial purpose”  
+
+9.	For just the count of loan approvals by year and county, do the following: 
+a.	Reshape the data from long to wide, making each county a single row of data with a column for the 2022 count and a county with the 2020 count. 
+i.	You only need to keep county and the count for each year. 
+ii.	You need to do this by reshaping / transposing the data. If you merge the original 2 fields together you will not receive full credit. 
+b.	Create a new variable with the percentage difference between 2022 and 2020. 
+c.	Print the ten counties with the largest percent changes in absolute difference. 
+i.	Format the top 10 count percentage changes as percent with 2 decimal places (i.e. 25.04%)
+10.	From https://www.bls.gov/lau/#cntyaa get the county level unemployment data for each year. 
+11.	Download the annual data for each year from the FRED (use Q4 data if annual is not provided). On each of the links below, click on “View Map” and then download the datafile for the entire US as a CSV. (you can also use the FRED API if you wish, I’ll even give you a bonus point if you figure it out) 
+a.	Equifax Subprime Credit data: https://fred.stlouisfed.org/series/EQFXSUBPRIME036061 
+b.	Market Hotness: Median Days on Market in Los Angeles County, CA: https://fred.stlouisfed.org/series/MEDAONMACOUNTY6037 
+c.	Homeownership rate:  https://fred.stlouisfed.org/series/HOWNRATEACS006037 
+d.	Estimated Percent of People of All Ages in Poverty: https://fred.stlouisfed.org/series/PPAACA06001A156NCEN 
+e.	Mean Commuting Time for Workers: https://fred.stlouisfed.org/series/B080ACS006001 
+f.	Combined Violent and Property Crime Offenses Known to Law Enforcement: https://fred.stlouisfed.org/series/FBITC006037 (Use may 2023 numbers as the year estimates if needed) 
+12.	Limit the FRED data to the state you are assigned making a new variable from the first two characters of the FIPS code. 
+13.	Append each year FRED data for only your state into a single file. 
+a.	If you your dataset contains statewide estimates then delete the statewide observations.
+14.	 Download the Q4 Census data by year for your state by county either from the Census website or the FRED. The variables you need are:
+a.	Population 
+b.	SNAP benefit recipients 
+c.	High School Graduate or Higher (5-year estimate) rates
+15.	Limit the Census data to the state you are assigned and append both years into a single file. 
+16.	Merge all three files by county FIPS code and year. 
+a.	Each file should have two observations/rows for each county, a 202X and 202Y value. 
+b.	Please be sure to identify any observations that did not merge correctly. Why did they not merge? 
+c.	If you your dataset contains statewide estimates then delete the statewide observations. 
+17.	Create the following new variables: 
+a.	A new variable “Commute Time Bins” with values of “Low” if below 20 minutes,  “Middle” if the value is between 20-40, and “High” above 40.  
+b.	Create a new variable that is the number of loans per capita (total divided by population). 
+c.	Create a new variable that is the number of high school graduates per capita (total divided by population). 
+18.	Create the following charts. Place all sets of charts in a single graph using a panel design such as the cowplot package from your homework. 
+a.	Provide a histogram or kernel density plot of the median time on market by state and year. Describe the relationship between the mean and median estimates. 
+i.	Add a normal distribution to the plot. Does the distribution appear normally distributed?
+ii.	Please make sure that the histogram and density plot are different colors and clearly labeled. 
+b.	Provide a grouped bar chart of percentage loan refinancing by state and year with “Home ownership bin” as the grouping variable. 
+i.	Make sure the groups are labeled clearly and colors are used to distinguish between groups.
+ii.	Label the top of the bars with the values.  
+19.	Subset the data to only the first year of data. Calculate the following correlation matrix by state and year: 
+a.	Take the log of all of the variables you have added (i.e. Equifax Subprime Credit, median price, population, poverty,…).  
+b.	Correlation matrix comparing all of the variables you have added to loan amount. 
+i.	Exclude all variables that use/are derived from loan amount in the calculation of the variable (i.e. log(loan amount), (loan amount)/population, …) 
+ii.	Please round all the correlations to two decimal places in the software. 
+iii.	If your correlation is above 85%, then you need to reconsider part (i). It is unlikely the variable you have chosen is not directly related to loan amount.  
+c.	Correlation matrix comparing all of the logged variables to loan amount.   
+i.	Please round all the correlations to two decimal places in the software. 
+
+20.	Plot a scatterplot of the strongest correlation with loan value you achieve in the previous question placing the average loan value on the y axis and the variable of your choice on the X axis. 
+a.	Does the graph support a linear relationship between the two variables?
+b.	Title and label your graph appropriately. 
+c.	Either do years separately in two side by side graphs or place all observations in a single plot and use either color or shapes to separate the two groups. 
+21.	Make a grouped boxplot or violin plot demonstrating the distribution of subprime mortgages by the home ownership bin variable made earlier. Each year should be a different color and the graph should have a clear legend. Use this plot to identify any extreme outlying counties.  
