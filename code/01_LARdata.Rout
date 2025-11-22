@@ -17,8 +17,6 @@ Type 'demo()' for some demos, 'help()' for on-line help, or
 'help.start()' for an HTML browser interface to help.
 Type 'q()' to quit R.
 
-[Previously saved workspace restored]
-
 > ###### Preamble
 > ## Description:
 > # This code opens the raw dataset downloaded from Snapshot National Loan Level Dataset
@@ -87,7 +85,9 @@ The following object is masked from 'package:utils':
 +     "action_taken","purchaser_type", "loan_type","loan_purpose",
 +     "reverse_mortgage", "open_end_line_of_credit",
 +     "business_or_commercial_purpose", "loan_amount",
-+     "interest_rate", "debt_to_income_ratio", "occupancy_type"
++     "interest_rate", "debt_to_income_ratio", "occupancy_type", "applicant_age", 
++     "manufactured_home_secured_property_type",
++     "manufactured_home_land_property_interest", "hoepa_status"
 +   )
 +   lar <- lar[varstokeep]
 +   
@@ -96,10 +96,9 @@ The following object is masked from 'package:utils':
 +   
 +   # 5. Convert Interest Rate and Loan Amount to Numeric
 +   # and Fix debt to income ratio variable
-+   # Convert key numeric fields to numeric
 +   lar$interest_rate <- suppressWarnings(as.numeric(lar$interest_rate))
 +   lar$loan_amount   <- suppressWarnings(as.numeric(lar$loan_amount))
-+ 
++   
 +   lar <- lar %>%
 +     mutate(
 +       # Step 1: numeric "minimum DTI" using gsub + first 2 digits
@@ -252,6 +251,38 @@ The following object is masked from 'package:utils':
 +           "Investment property"
 +         )
 +       ),
++       # Property Type
++       manufactured_home_secured_property_type = factor(
++         manufactured_home_secured_property_type,
++         levels = c(1, 2, 3),
++         labels = c(
++           "Manufactured home and land",
++           "Manufactured home and not land",
++           "Not applicable"
++         )
++       ),
++       # Property Type
++       manufactured_home_land_property_interest = factor(
++         manufactured_home_land_property_interest,
++         levels = c(1, 2, 3, 4, 5),
++         labels = c(
++           "Direct ownership",
++           "Indirect ownership",
++           "Paid leasehold",
++           "Unpaid leasehold",
++           "Not applicable"
++         )
++       ),
++       # Hoepa Status
++       hoepa_status = factor(
++         hoepa_status,
++         levels = c(1, 2, 3),
++         labels = c(
++           "High-cost mortgage",
++           "Not a high-cost mortgage",
++           "Not applicable"
++         )
++       ),
 +     )
 +   
 +   # 7. Add variable labels
@@ -272,7 +303,11 @@ The following object is masked from 'package:utils':
 +     debt_to_income_ratio            = "Debt-to-Income Ratio",
 +     construction_method             = "Construction Method",
 +     occupancy_type                  = "Occupancy Type",
-+     g3                              = "Dummy Group 3 States"
++     g3                              = "Dummy Group 3 States",
++     applicant_age                   = "Applicant age",
++     manufactured_home_secured_property_type ="Manufactured Home Secured Property Type",
++     manufactured_home_land_property_interest ="Manufactured Home Land Property Interest",
++     hoepa_status ="Home Ownership and Equity Protection Act of 1994"
 +   )
 +   
 +   for (v in names(var_labels)) {
@@ -316,9 +351,7 @@ The following object is masked from 'package:utils':
 +   ##  Small additional cleaning
 +   # Pad the county code digit to have leading 0ros
 +   g3lar$county_code <- sprintf("%05d", g3lar$county_code)
-+   #Keep only the first 3 digits
-+   g3lar$county_code <- substr(g3lar$county_code, 1, 3)
-+   
++ 
 +   return(g3lar)
 + }
 > 
@@ -340,11 +373,11 @@ The following object is masked from 'package:utils':
 > rm(list = ls())
 > gc()
            used  (Mb) gc trigger    (Mb)   max used    (Mb)
-Ncells  1574321  84.1    4875611   260.4    3629045   193.9
-Vcells 13707083 104.6 2450285325 18694.2 4780719309 36474.0
+Ncells  1574108  84.1    4712244   251.7    3936203   210.3
+Vcells 13706731 104.6 3062739692 23366.9 4780719040 36474.0
 > 
 > #End of R-script
 > 
 > proc.time()
    user  system elapsed 
-1074.70  359.00 2278.18 
+1203.31  479.68 2010.32 
