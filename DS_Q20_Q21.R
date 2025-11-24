@@ -1,6 +1,7 @@
 #Clean space
 rm(list = ls())
 
+install.packages("cowplot")
 #Libraries
 library(dplyr)
 library(tidyverse)
@@ -8,7 +9,6 @@ library(arrow)
 library(ggplot2)
 library(ggrepel)
 library(cowplot)
-
 #Directory
 getwd()
 setwd("..")
@@ -20,7 +20,6 @@ g3lar <- read_parquet("~/GitHub/DSProjectEcon6374G3/proc_data/g3lar.parquet")
 fred_data <- read_parquet("~/GitHub/DSProjectEcon6374G3/proc_data/FREDLARTXLA.parquet")
 names(fred_data)
 head(fred_data)
-
 
 ##############
 # Q20 – Creating logged variables
@@ -95,130 +94,62 @@ outliers <- fred_data_binned %>%
   ungroup
 
 
-# Filter data for 2021
-fred_2021 <- fred_data_binned %>% 
-  filter(year == 2021)
 
-fred_2023 <- fred_data_binned %>% 
-  filter(year == 2023)
-
-outliers_2021 <- outliers %>%
-  filter(year == 2021)
-
-outliers_2023 <- outliers %>%
-  filter(year == 2023)
-
-#Box Plots, outliers labeled by county code
-
-#2021 Plot
-ggplot(fred_2021, aes(x = home_bin, y = EQFXSUBPRIME)) +
-  geom_boxplot(outlier.color = "red", outlier.alpha = 0.7, fill = "blue") +
-  geom_point(
-    data = outliers_2021,
-    aes(x = home_bin, y = EQFXSUBPRIME),
-    color = "red",
-    alpha = 0.7,
-    size = 2
-  ) +
+#Box Plot, outliers labeled by county code
+ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, fill = as.factor(year))) +
+  geom_boxplot(outlier.color = "red", outlier.alpha = 0.7) +
   geom_text_repel(
-    data = outliers_2021,
-    aes(label = county_code),
+    data = outliers,
+    aes(x = interaction(home_bin, year), 
+        y = EQFXSUBPRIME,
+        label = county_code),
     color = "black",
     size = 3,
     max.overlaps = Inf,
     box.padding = 0.4,
-    point.padding = 0.3
+    point.padding = 0.3,
+    min.segment.length = 0
   ) +
   labs(
-    title = "Distribution of Subprime Mortgages by Home Ownership (2021)",
-    x = "Home Ownership Bin",
+    title = "Distribution of Subprime Mortgages by Home Ownership",
+    x = "Home Ownership Bin + Year",
     y = "Subprime Mortgage Rate",
-  ) +
+    fill = "Year" ) +
   theme_minimal(base_size = 16) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-ggplot(fred_2023, aes(x = home_bin, y = EQFXSUBPRIME)) +
-  geom_boxplot(outlier.color = "red", outlier.alpha = 0.7, fill = "green") +
+
+
+#Violin Plot, outliers labeled by county code
+ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, fill = as.factor(year))) +
+  geom_violin(trim = FALSE, alpha = 0.7) +
   geom_point(
-    data = outliers_2023,
-    aes(x = home_bin, y = EQFXSUBPRIME),
+    data = outliers,
+    aes(x = interaction(home_bin, year),
+        y = EQFXSUBPRIME),
     color = "red",
     alpha = 0.7,
-    size = 2
-  ) +
+    size = 2 ) +
   geom_text_repel(
-    data = outliers_2023,
-    aes(label = county_code),
+    data = outliers,
+    aes(x = interaction(home_bin, year),
+        y = EQFXSUBPRIME,
+        label = county_code),
     color = "black",
     size = 3,
     max.overlaps = Inf,
     box.padding = 0.4,
-    point.padding = 0.3
-  ) +
+    point.padding = 0.3,
+    min.segment.length = 0) +
   labs(
-    title = "Distribution of Subprime Mortgages by Home Ownership (2023)",
-    x = "Home Ownership Bin",
+    title = "Distribution of Subprime Mortgages by Home Ownership (Violin Plot)",
+    x = "Home Ownership Bin + Year",
     y = "Subprime Mortgage Rate",
-    fill = "Home Ownership Bin"
+    fill = "Year"
   ) +
   theme_minimal(base_size = 16) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
-#Violin Plots, outliers labeled by county code
-
-#2021 Plot
-ggplot(fred_2021, aes(x = home_bin, y = EQFXSUBPRIME)) +
-  geom_violin(trim = FALSE, fill = "skyblue", alpha = 0.7) +
-  geom_point(
-    data = outliers_2021,
-    aes(x = home_bin, y = EQFXSUBPRIME),
-    color = "red",
-    alpha = 0.7,
-    size = 2
-  ) +
-  geom_text_repel(
-    data = outliers_2021,
-    aes(label = county_code),
-    color = "black",
-    size = 3,
-    max.overlaps = Inf,
-    box.padding = 0.4,
-    point.padding = 0.3
-  ) +
-  labs(
-    title = "Distribution of Subprime Mortgages by Home Ownership (2021)",
-    x = "Home Ownership Bin",
-    y = "Subprime Mortgage Rate"
-  ) +
-  theme_minimal(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
-
-#2023 Plot
-ggplot(fred_2023, aes(x = home_bin, y = EQFXSUBPRIME)) +
-  geom_violin(trim = FALSE, fill = "orange", alpha = 0.7) +
-  geom_point(
-    data = outliers_2023,
-    aes(x = home_bin, y = EQFXSUBPRIME),
-    color = "red",
-    alpha = 0.7,
-    size = 2
-  ) +
-  geom_text_repel(
-    data = outliers_2023,
-    aes(label = county_code),
-    color = "black",
-    size = 3,
-    max.overlaps = Inf,
-    box.padding = 0.4,
-    point.padding = 0.3
-  ) +
-  labs(
-    title = "Distribution of Subprime Mortgages by Home Ownership (2023)",
-    x = "Home Ownership Bin",
-    y = "Subprime Mortgage Rate"
-  ) +
-  theme_minimal(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
 
 
