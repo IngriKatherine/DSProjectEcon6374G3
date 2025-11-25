@@ -13,7 +13,8 @@ output:
      toc_depth: 3
      toc_float: yes
 ---
-```{r init, include=F}
+```{r libraries, include=FALSE}
+#Libraries needed to execute this code
 library(arrow)
 library(ggplot2)
 library(ezids)
@@ -29,7 +30,16 @@ library(vctrs)
 library(tibble)
 library(readxl)
 library(kableExtra)
-
+library(forcats)
+library(scales)
+library(httr)
+library(jsonlite)
+library(purrr)
+library(stringr)
+library(labelled)
+library(psych)
+library(corrplot)
+library(ggrepel)
 ```
 
 ```{r setup, include=FALSE}
@@ -39,16 +49,63 @@ knitr::opts_chunk$set(
   warning = FALSE,
   results = "markup")
 options(scientific=T, digits = 3) 
-
-# Set the root directory for all code chunks (important for reading files)
-#knitr::opts_knit$set(root.dir = "/Users/akashreddyashanna/Desktop/Fall 2025/Intro to DS/DataScienceProject")
+#Figures options
+knitr::opts_chunk$set(
+  fig.width = 10,
+  fig.height = 6,
+  out.width = "100%"
+)
+#Set Directory
 knitr::opts_knit$set(root.dir = "..")
-
 ```
 
-# FFIEC’s Home Mortgage Disclosure Act (HMDA) Loan/Application Register (LAR)
+# Q1 - Q4 FFIEC’s Home Mortgage Disclosure Act (HMDA) Loan/Application Register (LAR)
 
-```{r, eval=FALSE}
+***1.	Download the FFIEC’s Home Mortgage Disclosure Act (HMDA) Loan/Application Register (LAR) data for all loans at https://ffiec.cfpb.gov/data-publication/snapshot-national-loan-level-dataset/2021 .***
+
+a.	You need the 2021 and 2023 LAR files
+
+
+***2.	Load the data. Please note, if the datafiles do not have column names, you must add as labeled below. A few important points: ***
+
+a.	The file with the column names can be found at https://ffiec.cfpb.gov/documentation/publications/modified-lar/modified-lar-schema 
+b.	Please also note that the column names or data coding may be in a different order for the two data sets. 
+c.	You will also need to know what the data codes mean- 
+https://ffiec.cfpb.gov/documentation/publications/loan-level-datasets/panel-data-fields 
+d.	To receive full credit, you must read the data in raw from the .csv file and rename the columns in the program in R. 
+e.	Please note, if you read in the first row of data and then rename the column you will lose points. That would delete the first row of real data.
+
+
+***3.	For the national level data, separate your two states from all other data and provide the following comparisons: (no need to exclude DC and other territories, just separate your two states from the rest)***
+
+a.	Median loan amount for your states vs. the others 
+b.	Average interest rate for your states vs. the others
+
+***4.	State level data***
+a.	Reduce both data files to only the States (using State FIPS code) your group is exploring. 
+b.	Append both files into a single data set. 
+c.	Format the FIPS county code as 3 digits with leading zeros as necessary. 
+
+  i.	This may be easier to do when reading in the file originally depending on the program you employ. 
+  ii.	You are welcome to make the data type text if that is the only way you can figure it out. 
+
+d.	Add a format to loan_amount that puts a comma in for thousands. (Add a dollar sign also for extra credit) 
+
+## Code Overview
+The following R Markdown chunk is set to eval = FALSE because it opens and processes two very large HMDA LAR datasets (approximately 9GB for 2021 and 4GB for 2023), which are very slow to execute within an R Markdown document. Instead, this code was executed directly from the command prompt for efficiency using a script called 01_LARdata.R and the batch command: ***R CMD BATCH "%~dp001_LARdata.R"***.
+
+The core of the script is the function process_lar_year(), which takes a year as input and performs a standardized cleaning pipeline for that year’s LAR file. It begins by reading the raw CSV file from the raw_data folder (e.g., raw_data/2021_public_lar.csv), then immediately drops any observations with missing state_code. It keeps only the variables needed for subsequent analysis (such as year, state and county codes, ethnicity, loan characteristics, and occupancy type) to reduce memory usage and focus on relevant fields. It then creates a new indicator variable g3 that flags whether each loan is in Texas or Louisiana (Group 3 states) versus all other states.
+
+Next, the function cleans and standardizes numeric fields and, in particular, the debt-to-income (DTI) ratio. It converts interest_rate and loan_amount to numeric, suppressing warnings that might arise from non-numeric entries. For the DTI variable, it strips out non-numeric characters, extracts the first two digits as a proxy for the minimum DTI, and then assigns each record to an ordered DTI bucket (e.g., <20%, 20%-<30%, up through >60%, plus an Exempt category). This recoded DTI variable is stored as an ordered factor, and the intermediate helper variables used in the transformation are removed to keep the dataset tidy.
+
+The script then converts a number of key variables into labeled factors to make them more interpretable in analysis and reporting. For example, it assigns human-readable labels to action_taken, purchaser_type, loan_type, loan_purpose, reverse_mortgage, open_end_line_of_credit, business_or_commercial_purpose, construction_method, occupancy_type, and the Group 3 indicator g3 itself (with labels “Other States” and “Texas and Louisiana”). It also attaches descriptive variable labels (through the label attribute) to selected columns, so that future tables or exports can use clearer variable descriptions without additional relabeling.
+
+Within each year, the function produces a summary comparison table of Group 3 states versus other states. It groups the data by g3 and calculates the median loan amount and average interest rate for each group. These statistics are then formatted for presentation: loan amounts are shown with a dollar sign and thousands separators, and interest rates are rounded to two decimal places. Column names are replaced with more descriptive titles, and the resulting table is exported as an Excel file to the output directory (e.g., output/comparison_g3vsother_2021.xlsx), preserving a clean, presentation-ready format for reporting. ***The resulting tables are included in the next code chunk***
+
+Finally, the function filters the dataset down to only the loans from Texas and Louisiana, pads the county FIPS codes to five digits (ensuring consistent formatting with leading zeros where necessary), and returns this subset. Outside the function, the script calls process_lar_year() separately for 2021 and 2023, binds the two yearly Group 3 datasets together with rbind, and saves the combined result as a Parquet file (proc_data/g3lar.parquet). This final Parquet dataset contains only the cleaned, labeled, and filtered records for Texas and Louisiana across both years, ready for efficient downstream analysis.
+
+
+```{r Q1Q4, eval=FALSE}
 ###### FUNCTION INITIAL CLEANING ALL STATES ######
 process_lar_year <- function(year) {
   # 1. Read in data
@@ -312,108 +369,1996 @@ g3lar <- rbind(g3lar2021, g3lar2023)
 write_parquet(g3lar, "proc_data/g3lar.parquet")
 ```
 
-## Median loan amount and Average interest rate. TX and LA vs other states
-```{r}
+# Q3: Median loan amount and Average interest rate. TX and LA vs other states
+```{r Q3}
 res1 <- read_excel("output/comparison_g3vsother_2021.xlsx")
 res2 <- read_excel("output/comparison_g3vsother_2023.xlsx")
 kable(res1, format = "markdown", caption = "2021") %>%
   kable_styling(full_width = FALSE)
 kable(res2, format = "markdown", caption = "2023") %>%
   kable_styling(full_width = FALSE)
+```
+
+# Q5: Provide the following statistical summaries by each state and year.
+
+***a.	Provide a table of minimum, maximum, and average loan amount by loan type.***
+i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like “FHA” not “2”).
+
+```{r Q5a}
+#Load data
+g3lar = read_parquet("proc_data/g3lar.parquet")
+
+#Structure check
+#names(data)
+#str(data)
+
+# Q5(a): min, max, mean loan amounts
+table_5a <- g3lar %>%
+  group_by(state_code, activity_year, loan_type) %>%
+  summarise(
+    min_loan  = min(loan_amount, na.rm = TRUE),
+    max_loan  = max(loan_amount, na.rm = TRUE),
+    mean_loan = mean(loan_amount, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    min_loan  = dollar(min_loan, accuracy = 1),
+    max_loan  = dollar(max_loan, accuracy = 1),
+    mean_loan = dollar(mean_loan, accuracy = 1)
+  )
+
+kable(
+  table_5a,
+  format = "markdown",
+  caption = "Loan Summary by State, Year, and Loan Type"
+) %>%
+  kable_styling(full_width = FALSE)
 
 ```
 
-
-Provide the following statistical summaries by each state and year. 
-a.	Provide a table of minimum, maximum, and average loan amount by loan type. 
-i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like “FHA” not “2”). 
-b.	Provide the same information graphically. Provide a grouped bar chart with the average loan value by loan purpose grouped by state and year. Label the averages for each bar on the chart. 
+***b.	Provide the same information graphically. Provide a grouped bar chart with the average loan value by loan purpose grouped by state and year. Label the averages for each bar on the chart.***
 i.	Make sure loan type values read with appropriate labels inside the table produced by the software. (You can use a format or recode the variable, but for example 2 should be replaced with "Home improvement" in the table. 
-ii.	Do not plot “Not Applicable”. Filter these values out of the graph (but do not remove from main data set). 
-c.	Provide a table of the average value of Interest rate for 2020 and 2022 by property type.  
+ii.	Do not plot “Not Applicable”. Filter these values out of the graph (but do not remove from main data set).
+
+```{r Q5b}
+# Question 5(b): Average loan amount by loan type, state,
+#                and year (grouped bar chart)
+# Data for Q5(b): drop only "Not Applicable" from the plot
+plot_5b_data <- g3lar %>%
+  filter(
+    !is.na(loan_type),
+    loan_type != "Not Applicable"
+  ) %>%
+  group_by(state_code, activity_year, loan_type) %>%
+  summarise(
+    avg_loan = mean(loan_amount, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Correct short labels mapping: short = long
+loan_labels <- c(
+  "Conventional" = "Conventional (not insured or guaranteed by FHA VA RHS or FSA)",
+  "FHA"          = "Federal Housing Administration insured (FHA)",
+  "VA"           = "Veterans Affairs guaranteed (VA)",
+  "USDA"         = "USDA RHS or FSA guaranteed"
+)
+
+plot_5b_data <- plot_5b_data %>%
+  mutate(
+    loan_type_short = fct_recode(loan_type, !!!loan_labels),
+    loan_type_short = fct_relevel(loan_type_short, "Conventional", "FHA", "VA", "USDA")
+  )
+
+# Final plot for Q5(b)
+plot_5b <- ggplot(
+  plot_5b_data,
+  aes(
+    x = loan_type_short,
+    y = avg_loan,
+    fill = state_code
+  )
+) +
+  geom_col(position = position_dodge(width = 0.7), width = 0.6) +
+  
+  # REMOVED geom_text() to remove bar labels
+  
+  facet_wrap(~ activity_year, nrow = 1) +
+  
+  scale_fill_manual(
+    values = c("LA" = "#E64B35", "TX" = "#4DBBD5"),
+    name = "State"
+  ) +
+  scale_y_continuous(
+    labels = dollar_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  labs(
+    title = "Average Loan Amount by Loan Type, State, and Year",
+    caption = "Note: Loan types are Conventional, FHA, VA, USDA. \"Not Applicable\" is excluded from this plot.",
+    x = "Loan Type",
+    y = "Average Loan Amount ($)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    plot.title = element_text(face = "bold", size = 20),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+    axis.text.x = element_text(angle = 20, hjust = 1, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor = element_blank(),
+    strip.text = element_text(face = "bold", size = 11),
+    legend.position = "right",
+    legend.title = element_text(face = "bold")
+  )
+
+plot_5b
+
+```
+
+***c.	Provide a table of the average value of Interest rate for 2020 and 2022 by property type.***
 i.	Make sure property type is a meaningful label. 
-d.	Provide a two-way table of the action taken on the loan by derived_ethnicity. 
+```{r Q5c}
+# Question 5(c): Average interest rate by year and Property Type (2021 & 2023 only)
+table_5c <- g3lar %>% 
+  filter(activity_year %in% c(2021, 2023)) %>%  # dataset has only 2021 & 2023
+  group_by(activity_year, manufactured_home_secured_property_type) %>% 
+  summarise(
+    avg_interest_rate = mean(interest_rate, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+kable(table_5c,
+      format = "markdown",
+      caption = "Average Interest Rate by Property Type (2021 & 2023)") %>%
+  kable_styling(full_width = FALSE)
+```
+
+***d.	Provide a two-way table of the action taken on the loan by derived_ethnicity.***
 i.	Make sure that only the counts are in the table (no percentages, no row or column totals, ONLY counts) 
 ii.	Examine the “Not Available” category. What percentage of the data falls into this category? Does it the distribution of missing data look random over the different actions taken on loans? 
-e.	Provide a two-way table of the action taken on the loan by applicant_age. 
+```{r Q5d}
+# Q5(d)(i): Two-way table of counts only
+table_5d <- g3lar %>%
+  count(action_taken, derived_ethnicity, name = "count") %>%
+  mutate(count = comma(count))
+
+kable(table_5d,
+      format = "markdown",
+      caption = "Count of Loans by Action Taken and Derived Ethnicity") %>%
+  kable_styling(full_width = FALSE)
+
+# Q5(d)(ii): Percentage of records with derived_ethnicity
+#            = "Ethnicity Not Available"
+pct_ethnicity_not_app <- mean(
+  g3lar$derived_ethnicity == "Ethnicity Not Available",
+  na.rm = TRUE
+) * 100
+
+table_5d_ii <- data.frame(
+  metric = "Percent with Derived Ethnicity = 'Ethnicity Not Available'",
+  percent = round(pct_ethnicity_not_app, 2)
+)
+
+kable(table_5d_ii,
+      format = "markdown",
+      caption = "Percentage of Records with 'Ethnicity Not Available'") %>%
+  kable_styling(full_width = FALSE)
+```
+
+Approximately `r round(pct_ethnicity_not_app, 2)`% of all observations fall into the "Ethnicity Not Available" category. The distribution of missing ethnicity data is not random across action_taken categories; it is heavily concentrated in some actions (e.g., 'Loan originated') and much lower in others, indicating that missingness is systematic rather than random.
+
+***e.	Provide a two-way table of the action taken on the loan by applicant_age.*** 
 i.	Make sure that only the percentages are in the table (no counts, no row or column totals, ONLY percentages) 
 ii.	Make sure Age labels are legible and meaningful. (9999 is not an age.)
+```{r Q5e}
+data_age <- g3lar %>%
+  filter(applicant_age != 8888) %>%        # drop invalid age
+  mutate(
+    age_group = case_when(
+      applicant_age < 25 ~ "<25",
+      applicant_age >= 25 & applicant_age <= 34 ~ "25–34",
+      applicant_age >= 35 & applicant_age <= 44 ~ "35–44",
+      applicant_age >= 45 & applicant_age <= 54 ~ "45–54",
+      applicant_age >= 55 & applicant_age <= 64 ~ "55–64",
+      applicant_age >= 65 & applicant_age <= 74 ~ "65–74",
+      applicant_age >= 75 ~ "75+",
+      TRUE ~ NA_character_
+    ),
+    age_group = factor(
+      age_group,
+      levels = c("<25", "25–34", "35–44", "45–54", "55–64", "65–74", "75+")
+    )
+  )
 
-6.	Provide the following statistical summaries. 
-a.	Provide a table of minimum, maximum, and average loan value by loan type. 
-i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like FHA not “2”). 
-b.	Provide similar information graphically. Provide a grouped bar chart with the average loan value by loan type grouped by state and year. 
-i.	Label the averages for each bar on the chart. 
-c.	Provide a table of the average value of loans for 2023 and 2021 by property type. 
+table_5e <- data_age %>%
+  count(action_taken, age_group, name = "n") %>%
+  group_by(action_taken) %>%
+  mutate(pct = round(100 * n / sum(n), 1)) %>%   # ONLY percentages
+  select(action_taken, age_group, pct) %>%       # drop counts
+  ungroup()
+
+kable(table_5e,
+      format = "markdown",
+      caption = "Percentage of Applications by Age Group and Action Taken") %>%
+  kable_styling(full_width = FALSE)
+```
+
+
+# Q6	Provide the following statistical summaries. 
+
+***a.	Provide a table of minimum, maximum, and average loan value by loan type.***
+i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like FHA not “2”).
+
+```{r Q6a}
+g3lar$loan_type_label <- recode(g3lar$loan_type,
+                                "1" = "Conventional",
+                                "2" = "FHA",
+                                "3" = "VA",
+                                "4" = "USDA")
+
+table_6a <- g3lar %>%
+  group_by(loan_type_label) %>%
+  summarize(
+    min_value  = min(loan_amount, na.rm = TRUE),
+    max_value  = max(loan_amount, na.rm = TRUE),
+    mean_value = mean(loan_amount, na.rm = TRUE)
+  ) %>%
+  mutate(
+    min_value  = dollar(min_value),
+    max_value  = dollar(max_value),
+    mean_value = dollar(round(mean_value, 0))
+  )
+
+kable(table_6a,
+      format = "markdown",
+      caption = "Loan Amount Summary by Loan Type") %>%
+  kable_styling(full_width = FALSE)
+```
+
+***b.	Provide similar information graphically. Provide a grouped bar chart with the average loan value by loan type grouped by state and year.***
+i.	Label the averages for each bar on the chart.
+```{r Q6b}
+avg_plot_data <- g3lar %>%
+  group_by(state_code, activity_year, loan_type_label) %>%
+  summarize(avg_value = mean(loan_amount, na.rm = TRUE))
+
+#Grouped bar chart
+ggplot(avg_plot_data, aes(x = state_code, y = avg_value, fill = loan_type_label)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  geom_text(aes(label = round(avg_value, 0)),
+            position = position_dodge(width = 0.9),
+            vjust = -0.25,
+            size = 3) +
+  facet_wrap(~ activity_year) +
+  labs(
+    title = "Average Loan Value by Loan Type, State, and Year",
+    x = "State",
+    y = "Average Loan Value($)",
+    fill = "Loan Type"
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 400000, 50000),
+    labels = scales::comma) +
+  theme_bw()
+```
+
+***c.	Provide a table of the average value of loans for 2023 and 2021 by property type.*** 
 i.	Make sure loan type values read with appropriate labels inside the table produced by the software. (You can use a format or recode the variable, but for example 2 should be replaced with "Manufactured housing" in the table. 
-d.	Provide a two-way table of the action taken on the loan by occupancy type. 
+
+```{r Q6c}
+table_6c <- g3lar %>%
+  group_by(activity_year, manufactured_home_secured_property_type) %>%
+  summarize(
+    avg_value = mean(loan_amount, na.rm = TRUE),
+    .groups = "drop"
+  ) %>%
+  mutate(
+    avg_value = dollar(round(avg_value, 0))   # add commas + $ + rounding
+  )
+
+kable(table_6c,
+      format = "markdown",
+      caption = "Average Loan Amount by Year and Manufactured Home Secured Property Type") %>%
+  kable_styling(full_width = FALSE)
+```
+
+***d.	Provide a two-way table of the action taken on the loan by occupancy type.***
 i.	Make sure that only the counts are in the table (no percentages, no row or column totals, ONLY counts).
 ii.	Examine the “Not Applicable” category. What percentage of the data falls into this category? 
 iii.	Choose an appropriate graph to represent the data in this table. 
 
-7.	Do the following without creating a new dataset (i.e. filter the data): Based on summary statistics, is there any difference in the rates of “open-end_line_of_credit” by “derived_ethnicity” after applying the following filters: 
-a.	Loan type is equal to “Conventional”
-b.	Occupancy Type is equal to “Principal residence”
-c.	Loan Purpose is equal to “Home purchase”
-d.	Reverse Mortgage is “Not a reverse mortgage”
+```{r Q6d}
+tab_6d <- table(
+  action_taken   = g3lar$action_taken,
+  occupancy_type = g3lar$occupancy_type,
+  useNA = "ifany"
+)
 
-8.	Create a new dataset that is summary statistics by year, state, and county. It should include: 
-a.	Average interest rate per county. 
-b.	Percentage of “actions taken” for loan origination (versus all other values). 
-c.	Percentage of debt_to_income_ratio that are less than 45%
+# Fix any empty or NA column names so every column has a valid name
+cn <- colnames(tab_6d)
+cn[cn == "" | is.na(cn)] <- "Missing / blank"
+colnames(tab_6d) <- cn
+
+# Convert to data frame for kable, manually add action_taken as a column
+tab_6d_df_mat <- as.data.frame.matrix(tab_6d)
+
+table_6d_df <- data.frame(
+  action_taken = rownames(tab_6d_df_mat),
+  tab_6d_df_mat,
+  row.names = NULL,
+  check.names = FALSE
+)
+
+kable(
+  table_6d_df,
+  format = "markdown",
+  caption = "Cross-Tabulation of Action Taken by Occupancy Type (Counts Only)"
+) %>%
+  kable_styling(full_width = FALSE)
+
+# 2. Percentage of data in "Not Applicable" action_taken
+percent_not_applicable <- mean(g3lar$action_taken == "Not Applicable", na.rm = TRUE)
+```
+
+***The percentage of data in "Not Applicable" for action taken is `r percent_not_applicable*100`***
+
+
+The graph of the Action Taken by Occupancy is quite hard to read, so we included individual plots of each Occupancy to make it clearer.
+```{r Q6dg}
+ggplot(g3lar, aes(x = action_taken, fill = occupancy_type)) +
+  geom_bar(position = "dodge") + 
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    position = position_dodge(width = 0.9),
+    vjust = -0.3,
+    size = 3.2
+  ) +
+  labs(
+    title = "Action Taken by Occupancy Type",
+    x = "Action Taken",
+    y = "Count",
+    fill = "Occupancy Type"
+  ) +
+  scale_fill_manual(
+    values = c(
+      "Principal residence"   = "#E64B35",
+      "Second residence"      = "#81F121",
+      "Investment property"   = "#4DBBD5"
+    )
+  ) +
+  scale_y_continuous(
+    breaks = seq(0, 5000000, 100000),
+    labels = scales::comma
+  ) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+Due to the large difference in Values, it was difficult to see certain variables on the bar chart, so we added separate bar charts for each occupancy type for better comparison.
+
+```{r Q6dg2}
+ggplot(g3lar %>% filter(occupancy_type == "Principal residence"), 
+       aes(x = action_taken)) +
+  geom_bar(fill = "#E64B35") +
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    vjust = -0.3,
+    size = 5
+  ) +
+  labs(
+    title = "Action Taken — Principal Residence",
+    x = "Action Taken",
+    y = "Count"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(g3lar %>% filter(occupancy_type == "Second residence"), 
+       aes(x = action_taken)) +
+  geom_bar(fill = "#81F121") +
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    vjust = -0.3,
+    size = 5
+  ) +
+  labs(
+    title = "Action Taken — Second Residence",
+    x = "Action Taken",
+    y = "Count"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(g3lar %>% filter(occupancy_type == "Investment property"), 
+       aes(x = action_taken)) +
+  geom_bar(fill = "#4DBBD5") +
+  geom_text(
+    stat = "count",
+    aes(label = ..count..),
+    vjust = -0.3,
+    size = 5
+  ) +
+  labs(
+    title = "Action Taken — Investment Property",
+    x = "Action Taken",
+    y = "Count"
+  ) +
+  scale_y_continuous(labels = scales::comma) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+# Q7.	Do the following without creating a new dataset (i.e. filter the data): Based on summary statistics, is there any difference in the rates of “open-end_line_of_credit” by “derived_ethnicity” after applying the following filters: 
+***a.	Loan type is equal to “Conventional”***
+***b.	Occupancy Type is equal to “Principal residence”***
+***c.	Loan Purpose is equal to “Home purchase”***
+***d.	Reverse Mortgage is “Not a reverse mortgage”***
+
+We disagree with the suggestion of "without creating a new dataset" as the dataset is needed for future steps and overwriting it would imply that we would need to read it again later, a process that is inefficient. For that reason we created a new dataset with the filtered parameters.
+
+```{r Q7a}
+q7_data <- g3lar %>%
+  filter(
+    loan_type == "Conventional (not insured or guaranteed by FHA VA RHS or FSA)",
+    occupancy_type == "Principal residence",
+    loan_purpose == "Home purchase",
+    reverse_mortgage == "Not a reverse mortgage"
+  )
+
+# Check how many observations left after filtering
+cat("Observations left after filtering")
+nrow(q7_data)
+
+# Check how many in each ethnicity group
+cat("Tabulation of Ethnicity Group")
+table(q7_data$derived_ethnicity, useNA = "ifany")
+
+# 2) Compute rate of open-end line of credit by ethnicity
+q7_summary <- q7_data %>%
+  group_by(derived_ethnicity) %>%
+  summarize(
+    n_obs   = n(),
+    n_open  = sum(open_end_line_of_credit == "Open-end line of credit",
+                  na.rm = TRUE),
+    rate_open = n_open / n_obs,
+    .groups = "drop"
+  ) %>%
+  # readable labels (adjust if your raw values differ)
+  mutate(
+    derived_ethnicity_label = recode(
+      derived_ethnicity,
+      "Hispanic or Latino"              = "Hispanic or Latino",
+      "Not Hispanic or Latino"          = "Not Hispanic or Latino",
+      "Ethnicity Not Available"         = "Ethnicity Not Available",
+      "Joint"                           = "Joint",
+      "Free Form Text Only"             = "Free-form Text Only",
+      .default                          = as.character(derived_ethnicity)
+    ),
+    n_obs   = comma(n_obs),
+    n_open  = comma(n_open),
+    rate_open = percent(rate_open, accuracy = 0.1)
+  ) %>%
+  select(
+    `Derived Ethnicity` = derived_ethnicity_label,
+    `Number of Loans` = n_obs,
+    `Number Open-End LOC` = n_open,
+    `Share Open-End LOC` = rate_open
+  )
+
+kable(q7_summary,
+      format = "markdown",
+      caption = "Open-End Lines of Credit by Derived Ethnicity") %>%
+  kable_styling(full_width = FALSE)
+```
+
+# Q8.	Create a new dataset that is summary statistics by year, state, and county. It should include:
+***a.	Average interest rate per county.***
+***b.	Percentage of “actions taken” for loan origination (versus all other values).***
+***c.	Percentage of debt_to_income_ratio that are less than 45%***
 i.	This one will require recoding because of ranges.  Suggest using gsub to remove punctuation and then take the first two characters and make them a new variable. But we want the lowest percent for each one, you cannot just set the ranges to missing. 
-d.	Percentage of loans that are for Freddie Mac (Type of Purchaser)
-e.	Percentage of loans that are “business or commercial purpose”  
+***d.	Percentage of loans that are for Freddie Mac (Type of Purchaser)***
+***e.	Percentage of loans that are “business or commercial purpose”***
 
-9.	For just the count of loan approvals by year and county, do the following: 
-a.	Reshape the data from long to wide, making each county a single row of data with a column for the 2022 count and a county with the 2020 count. 
+```{r Q8}
+# Create helper indicators for Q8
+lar_q8 <- g3lar %>%
+  mutate(
+    
+    # (b) Loan origination indicator
+    is_origination = case_when(
+      action_taken == "Loan originated" ~ 1,
+      TRUE ~ 0
+    ),
+    
+    # (c) Debt-to-income: extract lowest value in the range
+    dti_str = as.character(debt_to_income_ratio),
+    dti_clean = gsub("[^0-9]", "", dti_str),
+    dti_low = suppressWarnings(as.numeric(substr(dti_clean, 1, 2))),
+    dti_lt_45 = ifelse(!is.na(dti_low) & dti_low < 45, 1, 0),
+    
+    # (d) Freddie Mac indicator – Purchaser Type
+    is_freddie = case_when(
+      purchaser_type == "Freddie Mac" ~ 1,
+      TRUE ~ 0
+    ),
+    
+    # (e) Business or commercial purpose indicator
+    is_business = case_when(
+      business_or_commercial_purpose == 1 ~ 1,
+      business_or_commercial_purpose == "Business or commercial purpose" ~ 1,
+      TRUE ~ 0
+    )
+  )
+
+# Create summary dataset by year, state, county
+q8_summary <- lar_q8 %>%
+  group_by(activity_year, state_code, county_code) %>%
+  summarize(
+    avg_interest_rate = mean(interest_rate, na.rm = TRUE), #Average interest rate per county
+    pct_origination = mean(is_origination, na.rm = TRUE), #Percentage of “actions taken” for loan origination (versus all other values)
+    pct_dti_under_45 = mean(dti_lt_45, na.rm = TRUE), #Percentage of debt_to_income_ratio that are less than 45%***
+    pct_freddie = mean(is_freddie, na.rm = TRUE), # Percentage of loans that are for Freddie Mac (Type of Purchaser)
+    pct_business = mean(is_business, na.rm = TRUE),
+    .groups = "drop" #Percentage of loans that are “business or commercial purpose
+  )
+
+q8_summary_fmt <- q8_summary %>%
+  mutate(
+    avg_interest_rate = round(avg_interest_rate, 3),  # keep as numeric (not %)
+    pct_origination   = percent(pct_origination,   accuracy = 0.1),
+    pct_dti_under_45  = percent(pct_dti_under_45,  accuracy = 0.1),
+    pct_freddie       = percent(pct_freddie,       accuracy = 0.1),
+    pct_business      = percent(pct_business,      accuracy = 0.1)
+  ) %>%
+  arrange(activity_year, state_code, county_code) %>%
+  rename(
+    `Year`                      = activity_year,
+    `State`                     = state_code,
+    `County`                    = county_code,
+    `Avg. Interest Rate`        = avg_interest_rate,
+    `% Loan Originations`       = pct_origination,
+    `% DTI < 45%`               = pct_dti_under_45,
+    `% Freddie Mac Purchases`   = pct_freddie,
+    `% Business Purpose Loans`  = pct_business
+  )
+q8_summary_fmt_10 <- q8_summary_fmt %>% 
+  slice(1:10)
+
+kable(q8_summary_fmt_10,
+      format = "markdown",
+      caption = "Summary of Loan Characteristics by Year, State, and County \n (First 10 Rows)") %>%
+  kable_styling(full_width = FALSE)
+
+#### SUMMARY of the new DATA
+# Select numeric columns for descriptive stats
+q8_desc <- q8_summary %>%
+  select(
+    avg_interest_rate,
+    pct_origination,
+    pct_dti_under_45,
+    pct_freddie,
+    pct_business
+  )
+
+# Compute descriptive statistics
+desc_table <- psych::describe(q8_desc) %>%
+  as.data.frame() %>%
+  rownames_to_column("variable") %>%
+  mutate(
+    variable = recode(variable,
+                      avg_interest_rate = "Avg. Interest Rate",
+                      pct_origination   = "% Loan Originations",
+                      pct_dti_under_45  = "% DTI < 45%",
+                      pct_freddie       = "% Freddie Mac Purchases",
+                      pct_business      = "% Business Purpose Loans"),
+    across(c(mean, sd, median, min, max), ~ round(.x, 4))
+  ) %>%
+  select(variable, n, mean, sd, median, min, max)
+
+kable(desc_table,
+      format = "markdown",
+      caption = "Descriptive Statistics for Summary statistics by year, state, and county") %>%
+  kable_styling(full_width = FALSE)
+```
+
+# Q9.	For just the count of loan approvals by year and county, do the following: 
+
+***a.	Reshape the data from long to wide, making each county a single row of data with a column for the 2022 count and a county with the 2020 count.***
 i.	You only need to keep county and the count for each year. 
 ii.	You need to do this by reshaping / transposing the data. If you merge the original 2 fields together you will not receive full credit. 
-b.	Create a new variable with the percentage difference between 2022 and 2020. 
-c.	Print the ten counties with the largest percent changes in absolute difference. 
+***b.	Create a new variable with the percentage difference between 2022 and 2020.***
+***c.	Print the ten counties with the largest percent changes in absolute difference.***
 i.	Format the top 10 count percentage changes as percent with 2 decimal places (i.e. 25.04%)
-10.	From https://www.bls.gov/lau/#cntyaa get the county level unemployment data for each year. 
-11.	Download the annual data for each year from the FRED (use Q4 data if annual is not provided). On each of the links below, click on “View Map” and then download the datafile for the entire US as a CSV. (you can also use the FRED API if you wish, I’ll even give you a bonus point if you figure it out) 
+
+```{r Q9}
+# 1) Count loan approvals (Loan originated) by year and county
+q9_counts <- g3lar %>%
+  filter(
+    action_taken == "Loan originated",
+    activity_year %in% c(2021, 2023)
+  ) %>%
+  group_by(activity_year, state_code, county_code) %>%
+  summarize(
+    n_approvals = n(),
+    .groups = "drop"
+  )
+
+# 2) Reshape from long to wide: one row per county, separate columns for 2021 and 2023
+q9_wide <- q9_counts %>%
+  tidyr::pivot_wider(
+    names_from  = activity_year,
+    values_from = n_approvals,
+    names_prefix = "count_"
+  )
+
+# 3) Percentage difference between 2023 and 2021
+q9_wide <- q9_wide %>%
+  mutate(
+    pct_diff = dplyr::if_else(
+      !is.na(count_2021) & count_2021 > 0,
+      (count_2023 - count_2021) / count_2021,
+      NA_real_
+    )
+  )
+
+# 4) Top 10 counties by absolute percentage change (formatted as percent)
+q9_top10 <- q9_wide %>%
+  filter(!is.na(pct_diff)) %>%
+  mutate(
+    pct_diff_abs   = abs(pct_diff),
+    pct_diff_label = sprintf("%.2f%%", pct_diff * 100)
+  ) %>%
+  arrange(desc(pct_diff_abs)) %>%
+  slice_head(n = 10) %>%
+  select(
+    state_code,
+    county_code,
+    count_2021,
+    count_2023,
+    pct_diff,
+    pct_diff_label
+  )
+
+q9_top10_fmt <- q9_top10 %>%
+  # Format percent change nicely
+  mutate(
+    pct_change_2021_2023 = scales::percent(pct_diff, accuracy = 0.1)
+  ) %>%
+  # Keep only what we want to show
+  select(
+    state_code,
+    county_code,
+    count_2021,
+    count_2023,
+    pct_change_2021_2023
+  ) %>%
+  # Rename columns for pretty output
+  rename(
+    `State`                      = state_code,
+    `County`                     = county_code,
+    `2021 Loan Originations`     = count_2021,
+    `2023 Loan Originations`     = count_2023,
+    `% Change 2021–2023`         = pct_change_2021_2023
+  )
+
+kable(
+  q9_top10_fmt,
+  format  = "markdown",
+  caption = "Top 10 Counties by Percent Change in Loan Originations, 2021–2023"
+) %>%
+  kable_styling(full_width = FALSE)
+```
+
+# Q10. From https://www.bls.gov/lau/#cntyaa get the county level unemployment data for each year.
+
+The followind code chunk imports county‐level unemployment data for Louisiana and Texas from the BEA/BLS local area unemployment time-series files and restructures them into clean, analysis-ready datasets for the years 2021 and 2023. After reading each state’s raw text file, which contains monthly and annual unemployment indicators going back to 1976, the script filters the data to retain only the two years of interest and removes the annual-average records so that only monthly observations remain. It constructs a proper date variable using the reported year and month, then isolates county-level records by decoding the `series_id` field, which embeds both the geographic level and the variable type. County FIPS codes are extracted from the same identifier, and the variable code is recoded into descriptive names such as unemployment rate, unemployment count, employment, labor force, labor-force participation rate, and related measures. After checking for duplicates, the code keeps only the essential fields, reshapes the dataset from long to wide so that each unemployment indicator appears as its own column, and exports the final county-level files for Louisiana and Texas as parquet files to reduce storage size and improve processing efficiency.
+
+```{r Q10, eval=FALSE}
+# This code opens the unemployment data at the county level from BEA
+# It only uses the states TX, LA 
+# It filters to keep only Counties and only 2021 and 2023 
+# Finally it exports the dataset as a parquet file to save space
+
+###### LOUISIANA  ######
+## Read txt downloaded from https://download.bls.gov/pub/time.series/la/la.data.25.Louisiana
+# It contains the historic information for unemployment of Louisiana at all the aggregations
+LA = read.table("raw_data/la.data.25.Louisiana.txt", header = TRUE, sep = "\t")
+## It has information since 1976 but I am only keeping 2021 and 2023
+LA_2123 <- LA%>%
+  filter(year == 2021 | year == 2023)
+## It has monthly and Annual Averages, I am keeping monthly data, as Annual Averages be easily recalculated
+LA_2123 <- LA_2123%>%
+  filter(period != "M13")
+## Create Date Variable with year and month
+LA_2123$date <- as.Date(
+  paste0(LA_2123$year, "-", substring(LA_2123$period, 2), "-01")
+)
+### I am only keeping the Counties and equivalents
+#area_type_code	areatype_text
+#A	Statewide
+#B	Metropolitan areas
+#C	Metropolitan divisions
+#D	Micropolitan areas
+#E	Combined areas
+#CN IS THIS ONE!!!! #F	Counties and equivalents
+#G	Cities and towns above 25,000 population
+#H	Cities and towns below 25,000 population in New England
+#I	Parts of cities that cross county boundaries
+#J	Multi-entity small labor market areas
+#K	Intrastate parts of interstate areas
+#L	Balance of state areas
+#M	Census regions
+#N	Census divisions
+
+LA_2123$agg = substr(LA_2123$series_id, start = 4, stop = 5)
+table(LA_2123$agg)
+
+LA_2123_CN = LA_2123%>%
+  filter(agg == "CN")
+
+## Get the county_code
+LA_2123_CN$county_code = substr(LA_2123_CN$series_id, start = 6, stop = 10)
+
+## Get the variable code
+LA_2123_CN$agg = substr(LA_2123_CN$series_id, start = 19, stop = 20)
+table(LA_2123_CN$agg)
+
+LA_2123_CN = LA_2123_CN %>%
+  mutate(
+    agg = recode(agg,
+                 "03" = "unemployment_rate",
+                 "04" = "unemployment",
+                 "05" = "employment",
+                 "06" = "labor_force",
+                 "07" = "employment_population_ratio",
+                 "08" = "labor_force_participation_rate",
+                 "09" = "civilian_noninstitutional_population"
+    )
+  )
+
+#Identify duplicates
+duplicates = duplicated(LA_2123_CN[, c("county_code","date","agg")])
+print(which(duplicates))
+
+## Filter to only what we need
+LA_2123_CN_f=LA_2123_CN[c("county_code","date","value","agg")]
+
+#Clean space
+rm(LA,LA_2123,LA_2123_CN)
+
+## Reshape wide to get variables in columns
+LA_2123_CN_f = LA_2123_CN_f %>%
+  pivot_wider(
+    id_cols = c(date, county_code),
+    names_from = agg,
+    values_from = value
+  )
+
+###### SAVE FINAL DATASET ######
+write_parquet(LA_2123_CN_f, "proc_data/BEA_unemployment_LA2123CN.parquet")
+
+#Free unused memory and R.Data
+rm(list = ls())
+gc()
+
+###### TEXAS  ######
+## Read txt downloaded from https://download.bls.gov/pub/time.series/la/la.data.51.Texas
+# It contains the historic information for unemployment of Texas at all the aggregations
+TX = read.table("raw_data/la.data.51.Texas.txt", header = TRUE, sep = "\t")
+## It has information since 1976 but I am only keeping 2021 and 2023
+TX_2123 <- TX%>%
+  filter(year == 2021 | year == 2023)
+## It has monthly and Annual Averages, I am keeping monthly data, as Annual Averages be easily recalculated
+TX_2123 <- TX_2123%>%
+  filter(period != "M13")
+## Create Date Variable with year and month
+TX_2123$date <- as.Date(
+  paste0(TX_2123$year, "-", substring(TX_2123$period, 2), "-01")
+)
+### I am only keeping the Counties and equivalents
+#area_type_code	areatype_text
+#A	Statewide
+#B	Metropolitan areas
+#C	Metropolitan divisions
+#D	Micropolitan areas
+#E	Combined areas
+#CN IS THIS ONE!!!! #F	Counties and equivalents
+#G	Cities and towns above 25,000 population
+#H	Cities and towns below 25,000 population in New England
+#I	Parts of cities that cross county boundaries
+#J	Multi-entity small labor market areas
+#K	Intrastate parts of interstate areas
+#L	Balance of state areas
+#M	Census regions
+#N	Census divisions
+
+TX_2123$agg = substr(TX_2123$series_id, start = 4, stop = 5)
+table(TX_2123$agg)
+
+TX_2123_CN = TX_2123%>%
+  filter(agg == "CN")
+
+## Get the county_code
+TX_2123_CN$county_code = substr(TX_2123_CN$series_id, start = 6, stop = 10)
+
+## Get the variable code
+TX_2123_CN$agg = substr(TX_2123_CN$series_id, start = 19, stop = 20)
+table(TX_2123_CN$agg)
+
+TX_2123_CN = TX_2123_CN %>%
+  mutate(
+    agg = recode(agg,
+                 "03" = "unemployment_rate",
+                 "04" = "unemployment",
+                 "05" = "employment",
+                 "06" = "labor_force",
+                 "07" = "employment_population_ratio",
+                 "08" = "labor_force_participation_rate",
+                 "09" = "civilian_noninstitutional_population"
+    )
+  )
+
+#Identify duplicates
+duplicates = duplicated(TX_2123_CN[, c("county_code","date","agg")])
+print(which(duplicates))
+
+## Filter to only what we need
+TX_2123_CN_f=TX_2123_CN[c("county_code","date","value","agg")]
+
+#Clean space
+rm(TX,TX_2123,TX_2123_CN)
+
+## Reshape wide to get variables in columns
+TX_2123_CN_f = TX_2123_CN_f %>%
+  pivot_wider(
+    id_cols = c(date, county_code),
+    names_from = agg,
+    values_from = value
+  )
+
+###### SAVE FINAL DATASET ######
+write_parquet(TX_2123_CN_f, "proc_data/BEA_unemployment_TX2123CN.parquet")
+```
+
+# Q11-Q16 FRED Data at the County level - API.
+
+***11.	Download the annual data for each year from the FRED (use Q4 data if annual is not provided). On each of the links below, click on “View Map” and then download the datafile for the entire US as a CSV. (you can also use the FRED API if you wish, I’ll even give you a bonus point if you figure it out)***
+
 a.	Equifax Subprime Credit data: https://fred.stlouisfed.org/series/EQFXSUBPRIME036061 
 b.	Market Hotness: Median Days on Market in Los Angeles County, CA: https://fred.stlouisfed.org/series/MEDAONMACOUNTY6037 
 c.	Homeownership rate:  https://fred.stlouisfed.org/series/HOWNRATEACS006037 
 d.	Estimated Percent of People of All Ages in Poverty: https://fred.stlouisfed.org/series/PPAACA06001A156NCEN 
 e.	Mean Commuting Time for Workers: https://fred.stlouisfed.org/series/B080ACS006001 
 f.	Combined Violent and Property Crime Offenses Known to Law Enforcement: https://fred.stlouisfed.org/series/FBITC006037 (Use may 2023 numbers as the year estimates if needed) 
-12.	Limit the FRED data to the state you are assigned making a new variable from the first two characters of the FIPS code. 
-13.	Append each year FRED data for only your state into a single file. 
+
+***12.	Limit the FRED data to the state you are assigned making a new variable from the first two characters of the FIPS code.***
+
+***13.	Append each year FRED data for only your state into a single file.***
 a.	If you your dataset contains statewide estimates then delete the statewide observations.
-14.	 Download the Q4 Census data by year for your state by county either from the Census website or the FRED. The variables you need are:
+***14.	 Download the Q4 Census data by year for your state by county either from the Census website or the FRED. The variables you need are:***
 a.	Population 
 b.	SNAP benefit recipients 
 c.	High School Graduate or Higher (5-year estimate) rates
-15.	Limit the Census data to the state you are assigned and append both years into a single file. 
-16.	Merge all three files by county FIPS code and year. 
+***15.	Limit the Census data to the state you are assigned and append both years into a single file.*** 
+***16.	Merge all three files by county FIPS code and year.***
 a.	Each file should have two observations/rows for each county, a 202X and 202Y value. 
 b.	Please be sure to identify any observations that did not merge correctly. Why did they not merge? 
+
+I used a full join, please refer to the FRED Cleaning code chunk for the answer to this point.
+
 c.	If you your dataset contains statewide estimates then delete the statewide observations. 
-17.	Create the following new variables: 
+
+
+## Inputs
+In order to download the county level data using the FRED API, each county requested an individual call (I did not find a way to get the API to allow me to download all the counties at once). Thus, first I downloaded from the US Census the list of all counties with their FIPS 5 digit code from https://transition.fcc.gov/oet/info/maps/census/fips/fips.txt This list required some cleaning to remove the text at the beginning and extract only the county codes (as 5 digits with padding) and the county names. This is used as an input for the API call to download all the series requested for this assignment
+
+```{r Fcodes, eval=FALSE}
+###### BRING COUNTY CODES######
+fips = read.table("raw_data/fips.txt", header = TRUE, sep = "\t", skip = 14, col.names=c("raw"))
+#Clean FIPS
+fips_c=fips %>%
+  mutate(raw = trimws(raw, which = "left")) %>%
+  separate(raw, into = c("code", "state"),
+           sep = "\\s+", extra = "merge", fill = "right")
+fips_c <- fips_c %>%
+  mutate(code_2 = suppressWarnings(as.numeric(code))) %>%
+  filter(!is.na(code_2))
+
+fips_f=fips_c[c("code", "state")]
+
+fips_f <- fips_f %>%
+  rename(state_county = state)
+
+#Clean space
+rm(fips,fips_c)
+
+#Create State Code
+fips_f$state = substr(fips_f$code, start = 1, stop = 2)
+
+##SAVE FIPS DICTIONARY
+write_parquet(fips_f, "proc_data/FIPS_dictionary.parquet")
+```
+
+## API CALL
+The following chunk of code downloads county-level economic data from the Federal Reserve Bank of St. Louis (FRED) for all counties in Texas and Louisiana, then saves everything into a single Parquet file. 
+
+***The code chunk is intentionally set as eval=FALSE to prevent it from executing automatically.*** Running the API calls in real time can take up to four hours because intermittent server errors and network instability cause repeated retries. Additionally, as mentioned previously, the FRED API connection could only be achieved by specifying the county code directly within each series request. This design requires making one API call for every combination of series prefix and county, resulting in more than 3,000 individual requests. Because of the volume and the potential for slow or unreliable responses, the chunk remains commented to avoid accidental execution during rendering.
+
+The script begins by storing a FRED API key in a global variable api_key. This key is required for all requests made to the Federal Reserve Bank of St. Louis FRED API. By keeping it as a global variable, the program can reuse the same key across all subsequent function calls.
+
+The build_series_id() function generates the full FRED series ID for a given variable prefix and county code. Most series follow a standard format where the series ID is simply the prefix concatenated with the county FIPS code. However, two prefixes—PPAAWY and CBR—require special endings: "A156NCEN" for the former and "CAA647NCEN" for the latter. The function checks which prefix is being used and correctly constructs the appropriate series ID for each case. This ensures that the script handles both standard and exceptional naming conventions in the FRED database.
+
+The get_fred_series() function retrieves a single FRED series using its ID. It constructs a request URL, inserts required parameters (including the API key), and optionally includes start and end dates if they are provided. To improve robustness, the function uses RETRY() to automatically attempt the request up to three times in case of network or server failures. After receiving the response, the function checks for errors, parses the JSON content, and validates that observations exist. It then cleans the data by converting dates to proper date formats and numeric values to numeric types. Only the essential columns—date and value—are kept, and the resulting data frame is returned. If any step fails, the function logs the issue and returns NULL.
+
+The get_txla_counties() function reads a Parquet file containing a FIPS dictionary and extracts only the county-level FIPS codes for Texas (state code 48) and Louisiana (state code 22). It first filters the dataset to include only these two states, then removes any rows representing whole states instead of individual counties. The result is a clean vector of county FIPS codes used for later FRED queries.
+
+The central function of the script, download_fred_for_counties(), orchestrates the retrieval of multiple FRED series across many counties. It begins by obtaining the Texas and Louisiana county codes—unless the user passes them manually. It then creates all possible combinations of county codes and series prefixes using crossing(), meaning every prefix will be downloaded for every county. For each combination, it builds the corresponding series ID via build_series_id().
+
+To download each series, the function defines a helper fetch_one() that constructs the series ID, retrieves the data using get_fred_series(), and adds metadata columns identifying the county, original series prefix, and series ID. The script then applies this function to every county–prefix pair using purrr::pmap(). Any failed or empty downloads are automatically removed using purrr::compact(). When finished, the function returns a named list of all successful data frames, where each element corresponds to a different FRED series ID.
+
+After setting the working directory, the script calls download_fred_for_counties() and stores its output—hundreds of county-level FRED datasets—in fred_list. To preserve each dataset, the script creates a directory named series_parquet and iterates over every series in the list, saving each as a Parquet file using write_parquet(). The filenames are labeled using the series ID to ensure clarity. Finally, the script removes all variables from memory and runs garbage collection to free unused RAM.
+
+```{r FRED Download, eval=FALSE}
+# Globals
+api_key <- "93bb570ff595df729802a42870fb9436"
+
+########## Helper: build series ID ##########
+build_series_id <- function(prefix, county) {
+  if (prefix == "PPAAWY") {
+    paste0(prefix, county, "A156NCEN")
+  } else if (prefix == "CBR") {
+    paste0(prefix, county, "CAA647NCEN")
+  } else {
+    # Standard case: prefix + {county}
+    paste0(prefix, county)
+  }
+}
+
+
+########## Function: get a single FRED series ##########
+get_fred_series <- function(series_id, api_key,
+                            start_date = NULL,
+                            end_date   = NULL,
+                            verbose    = TRUE) {
+  
+  url <- "https://api.stlouisfed.org/fred/series/observations"
+  
+  params <- list(
+    series_id = series_id,
+    api_key   = api_key,
+    file_type = "json"
+  )
+  
+  if (!is.null(start_date)) params$observation_start <- start_date
+  if (!is.null(end_date))   params$observation_end   <- end_date
+  
+  # Retry on transient errors (network, 5xx)
+  res <- try(
+    RETRY("GET", url, query = params, times = 3, pause_base = 1),
+    silent = TRUE
+  )
+  
+  # Network / HTTP failure
+  if (inherits(res, "try-error")) {
+    if (verbose) message("Request failed for series_id = ", series_id)
+    return(NULL)
+  }
+  
+  if (http_error(res)) {
+    if (verbose) {
+      message("HTTP error ", status_code(res), " for series_id = ", series_id)
+    }
+    return(NULL)
+  }
+  
+  json_txt <- content(res, as = "text", encoding = "UTF-8")
+  
+  data <- try(fromJSON(json_txt), silent = TRUE)
+  if (inherits(data, "try-error") || is.null(data$observations)) {
+    if (verbose) message("Failed to parse JSON or missing 'observations' for ", series_id)
+    return(NULL)
+  }
+  
+  df <- data$observations
+  
+  # Handle empty / malformed
+  if (is.null(df) || !nrow(df)) {
+    if (verbose) message("No observations for series_id = ", series_id)
+    return(NULL)
+  }
+  
+  # Make sure columns exist
+  if (!all(c("date", "value") %in% names(df))) {
+    if (verbose) message("Unexpected columns in series_id = ", series_id)
+    return(NULL)
+  }
+  
+  df$date  <- as.Date(df$date)
+  df$value <- suppressWarnings(as.numeric(df$value))
+  
+  # Keep only needed columns
+  df <- df[, c("date", "value")]
+  
+  df
+}
+
+########## Function: get county codes for TX + LA ##########
+
+get_txla_counties <- function(fips_path) {
+  fips_f <- read_parquet(fips_path)
+  
+  fips_f %>%
+    filter(state %in% c("22", "48")) %>%     # Keep LA & TX
+    filter(!code %in% c("22", "48")) %>%     # Drop state-level rows
+    pull(code)
+}
+
+########## Master function: download FRED series ##########
+download_fred_for_counties <- function(
+    api_key,
+    fips_path              = "proc_data/FIPS_dictionary.parquet",
+    series_prefixes        = c(
+      "EQFXSUBPRIME0",
+      "MEDAONMACOUNTY",
+      "HOWNRATEACS0",
+      "PPAAWY",       # special case
+      "B080ACS0",
+      "FBITC0",       # This one only has data until 2021
+      "HC01ESTVC16",
+      "CBR"           # another special case
+    ),
+    county_codes           = NULL,
+    start_date             = "2021-01-01",
+    end_date               = "2021-12-31",
+    verbose                = TRUE
+) {
+  # Counties
+  if (is.null(county_codes)) {
+    county_codes <- get_txla_counties(fips_path)
+  }
+  
+  if (length(county_codes) == 0) {
+    stop("No county codes provided / found.")
+  }
+  
+  # All combinations of county x prefix
+  combos <- tidyr::crossing(
+    county = county_codes,
+    prefix = series_prefixes
+  )
+  
+  if (verbose) {
+    message("Total combinations to fetch: ", nrow(combos))
+  }
+  
+  # Vector of series IDs (same order as combos)
+  series_ids <- purrr::pmap_chr(
+    combos,
+    ~ build_series_id(..2, ..1)   # prefix = ..2, county = ..1
+  )
+  
+  # Fetch function for a single combination
+  fetch_one <- function(county, prefix) {
+    series_id <- build_series_id(prefix, county)
+    
+    if (verbose) {
+      message("Fetching ", series_id, " ...")
+    }
+    
+    df <- get_fred_series(
+      series_id  = series_id,
+      api_key    = api_key,
+      start_date = start_date,
+      end_date   = end_date,
+      verbose    = verbose
+    )
+    
+    if (is.null(df) || !nrow(df)) return(NULL)
+    
+    df %>%
+      mutate(
+        state_county  = county,
+        series_id     = series_id,
+        series_prefix = prefix
+      )
+  }
+  
+  # Map over all combinations -> list of data frames (one per series_id)
+  all_series_list <- purrr::pmap(
+    combos,
+    .f = ~ fetch_one(..1, ..2)
+  )
+  
+  # Name the list elements by series_id
+  names(all_series_list) <- series_ids
+  
+  # Drop NULL entries (series with no data / errors)
+  all_series_list <- purrr::compact(all_series_list)
+  
+  if (!length(all_series_list)) {
+    stop("No data was downloaded for any series.")
+  }
+  
+  if (verbose) {
+    message("Downloaded ", length(all_series_list), " non-empty series.")
+  }
+  
+  return(all_series_list)
+}
+
+########## EXECUTE ##########
+getwd()
+setwd("..")
+
+fred_list <- download_fred_for_counties(api_key = api_key)
+
+write.csv(fred_list[1], "raw_data/2021-01-01 to 2023-12-31 Equifax Subprime Credit Population by County (Percent).csv", row.names = FALSE)
+write.csv(fred_list[2], "raw_data/2021-01-01 to 2023-12-31 Market Hotness_ Median Days on Market by County (Days).csv", row.names = FALSE)
+write.csv(fred_list[3], "raw_data/2021-01-01 to 2023-01-01 Homeownership Rate (5-year estimate) by County (Rate).csv", row.names = FALSE)
+write.csv(fred_list[4], "raw_data/2021-01-01 to 2023-01-01 Estimated Percent of People of All Ages in Poverty by County (Percent).csv", row.names = FALSE)
+write.csv(fred_list[5], "raw_data/2021-01-01 to 2023-01-01 Mean Commuting Time for Workers (5-year estimate) by County (Minutes).csv", row.names = FALSE)
+write.csv(fred_list[6], "raw_data/2020-01-01 to 2021-01-01 Combined Violent and Property Crime Offenses Known to Law Enforcement by County (Known Offenses).csv", row.names = FALSE)
+write.csv(fred_list[7], "raw_data/2021-01-01 to 2022-01-01 SNAP Benefits Recipients by County (Persons).csv", row.names = FALSE)
+write.csv(fred_list[8], "raw_data/2021-01-01 to 2023-01-01 Resident Population by County (Thousands of Persons).csv", row.names = FALSE)
+
+#Free unused memory and R.Data
+rm(list = ls())
+gc()
+```
+
+## FRED Series Cleaning
+
+The code imports and harmonizes several county-level datasets for Louisiana and Texas, then combines them into a single analysis file and performs checks for temporal and coverage mismatches across series. For each data source (Equifax subprime credit, median days on market, homeownership rate, poverty rate, mean commuting time, crime offenses, educational attainment, SNAP recipients, and resident population), the script reads in the raw CSV file, keeps only the relevant time points (generally 2021 and 2023 where available), reshapes the data from wide to long format where necessary, and assigns an informative variable label. It standardizes county identifiers by renaming `Region.Code` to `county_code`, padding it to a 5-digit FIPS-like string, and extracting a `year` variable from the column names. The code then identifies the state from the first two digits of the county code, filters the data to include only Louisiana (22) and Texas (48), and recodes the state codes into their two-letter abbreviations “LA” and “TX”. For some series, such as the combined violent and property crime offenses known to law enforcement and SNAP benefits recipients, data are only available for 2021 in the raw files; these series are explicitly restricted to 2021 and a `year` value of 2021 is manually assigned so that they can still be merged consistently with the other datasets.
+
+After cleaning each individual dataset into a standardized structure with common keys (`year`, `county_code`, and `state`), the code combines all series into a single dataset, `FREDTXLA`, using `reduce(full_join, by = c("year", "county_code", "state"))` and saves the result as a parquet file. A full join is used intentionally because some counties may not report all variables in all years; using an inner join, or a left or right join, would have unnecessarily filtered the data and dropped counties that are missing one or more series, thereby losing valuable information on counties that are present in some datasets but not others. To diagnose temporal and coverage mismatches across series, the script then constructs an index of all observations across the individual data frames, records for each `(year, county_code)` pair how many distinct datasets it appears in, and flags observations that appear in only one dataset as “unmatched.” It summarizes the number of unmatched observations by dataset and by dataset–year combination, and then removes temporary identifiers before cleaning up the workspace and triggering garbage collection.
+
+This chunk takes about 1 minute to run, eval can be either TRUE or FALSE.
+```{r FREDcleaning, eval=FALSE}
+###### Equifax Subprime Credit data ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-12-31 Equifax Subprime Credit Population by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.10.01", "X2023.10.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "EQFXSUBPRIME"
+  )
+var_label(temp2$EQFXSUBPRIME) = "Equifax Subprime Credit data - Q4"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+EQFXSUBPRIME = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Market Hotness: Median Days on Market ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-12-31 Market Hotness_ Median Days on Market by County (Days).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.12.01", "X2023.12.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "MEDAONMACOUNTY"
+  )
+var_label(temp2$MEDAONMACOUNTY) = "Market Hotness: Median Days on Market - EOY M12"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+MEDAONMACOUNTY = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Homeownership Rate (5-year estimate) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Homeownership Rate (5-year estimate) by County (Rate).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "HOWNRATEACS"
+  )
+var_label(temp2$HOWNRATEACS) = "Homeownership Rate (5-year estimate)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+HOWNRATEACS = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+
+rm(temp2)
+
+
+###### Estimated Percent of People of All Ages in Poverty ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Estimated Percent of People of All Ages in Poverty by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "PPAAWY"
+  )
+var_label(temp2$PPAAWY) = "Estimated Percent of People of All Ages in Poverty"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+PPAAWY = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Mean Commuting Time for Workers ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Mean Commuting Time for Workers (5-year estimate) by County (Minutes).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "B080ACS"
+  )
+var_label(temp2$B080ACS) = "Mean Commuting Time for Workers"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+B080ACS = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Combined Violent and Property Crime Offenses Known to Law Enforcement ######
+## IT DOES NOT HAVE 2023!!! THE LAST INFORMATION IS 2021
+temp0=read.csv("raw_data/2020-01-01 to 2021-01-01 Combined Violent and Property Crime Offenses Known to Law Enforcement by County (Known Offenses).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01")]
+temp1$year=2021
+
+#clean
+temp2 = temp1 %>%
+  rename(county_code = Region.Code) %>%
+  rename(FBITC = X2021.01.01) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"))
+
+rm(temp0, temp1)
+
+var_label(temp2$FBITC) = "Combined Violent and Property Crime Offenses Known to Law Enforcement"
+
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+FBITC = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### High School Graduate or Higher (5-year estimate) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 High School Graduate or Higher (5-year estimate) by County (Percent).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "HC01ESTVC16"
+  )
+var_label(temp2$HC01ESTVC16) = "High School Graduate or Higher (5-year estimate)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+HC01ESTVC16 = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### SNAP Benefits Recipients ######
+## IT DOES NOT HAVE 2023!!! THE LAST INFORMATION IS 2022
+temp0=read.csv("raw_data/2021-01-01 to 2022-01-01 SNAP Benefits Recipients by County (Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01")]
+temp1$year=2021
+
+#clean
+temp2 = temp1 %>%
+  rename(county_code = Region.Code) %>%
+  rename(SNAPBR = X2021.01.01) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"))
+
+rm(temp0, temp1)
+
+var_label(temp2$SNAPBR) = "SNAP Benefits Recipients"
+
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+SNAPBR = temp2 %>% mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+###### Resident Population by County (Thousands of Persons) ######
+temp0=read.csv("raw_data/2021-01-01 to 2023-01-01 Resident Population by County (Thousands of Persons).csv", header = TRUE)
+temp1=temp0[c("Region.Code", "X2021.01.01", "X2023.01.01")]
+#reshape
+temp2 = temp1 %>%
+  pivot_longer(
+    cols = starts_with("X"),
+    names_to = c("date"),
+    values_to = "POPULATION"
+  )
+var_label(temp2$POPULATION) = "Resident Population by County (Thousands of Persons)"
+
+rm(temp0, temp1)
+
+#clean
+temp2 = temp2 %>%
+  rename(county_code = Region.Code) %>%
+  mutate(county_code = str_pad(as.character(county_code), width = 5, pad = "0"),
+         year = as.numeric(str_extract(date, "\\d{4}"))) %>%
+  select(-date)
+#Filter to TX and LA
+temp2$state = substr(temp2$county_code, start = 1, stop = 2)
+temp2 = temp2%>%
+  filter(state %in% c("22", "48"))
+
+POPULATION = temp2 %>%mutate(state = recode(state, "22" = "LA","48" = "TX" ))
+rm(temp2)
+
+#################################################
+###### Combine ALL ######
+FREDTXLA <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+                 HOWNRATEACS, PPAAWY, B080ACS, 
+                 FBITC, HC01ESTVC16, SNAPBR, POPULATION) %>%
+  reduce(full_join, by = c("year", "county_code", "state"))
+
+write_parquet(FREDTXLA, "proc_data/FRED_LATX.parquet")
+
+###### TEMPORAL PROCESS TO IDENTIFY MISMATCHED DATA ######
+dfs <- list(EQFXSUBPRIME, MEDAONMACOUNTY, 
+            HOWNRATEACS, PPAAWY, B080ACS, 
+            FBITC, HC01ESTVC16, SNAPBR, POPULATION)
+key_index <- imap_dfr(
+  dfs,
+  ~ .x %>%
+    mutate(tmp_id = row_number(), dataset = .y) %>%
+    select(dataset, tmp_id, year, county_code)
+)
+key_counts <- key_index %>%
+  group_by(year, county_code) %>%
+  mutate(n_datasets = n_distinct(dataset)) %>%
+  ungroup() %>%
+  mutate(unmatched = n_datasets == 1L) 
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    dataset_name <- deparse(substitute(.x))  # not actually needed, we use .y below
+  }
+)
+
+dfs_flagged <- imap(
+  dfs,
+  ~ {
+    this_name <- .y
+    flags <- key_counts %>%
+      filter(dataset == this_name) %>%
+      select(tmp_id, unmatched)
+    
+    .x %>%
+      mutate(tmp_id = row_number()) %>%
+      left_join(flags, by = "tmp_id") %>%
+      mutate(unmatched = if_else(is.na(unmatched), FALSE, unmatched))
+  }
+)
+unmatched_summary <- key_counts %>%
+  filter(unmatched) %>%                # only problematic rows
+  count(dataset, name = "n_unmatched")
+
+unmatched_summary
+
+unmatched_by_year <- key_counts %>%
+  filter(unmatched) %>%
+  count(dataset, year, name = "n_unmatched")
+
+unmatched_by_year
+
+dfs_clean <- dfs_flagged %>%
+  map(~ select(.x, -tmp_id))
+```
+
+# Q17.	Create the following new variables: 
 a.	A new variable “Commute Time Bins” with values of “Low” if below 20 minutes,  “Middle” if the value is between 20-40, and “High” above 40.  
 b.	Create a new variable that is the number of loans per capita (total divided by population). 
 c.	Create a new variable that is the number of high school graduates per capita (total divided by population). 
-18.	Create the following charts. Place all sets of charts in a single graph using a panel design such as the cowplot package from your homework. 
-a.	Provide a histogram or kernel density plot of the median time on market by state and year. Describe the relationship between the mean and median estimates. 
+
+This chunk only takes about 30 secs to run, eval can be either TRUE or FALSE.
+```{r Q17, eval=FALSE}
+FREDTXLA <- read_parquet("proc_data/FRED_LATX.parquet")
+
+# A new variable “Commute Time Bins” with values of “Low” if below 20 minutes, 
+#“Middle” if the value is between 20-40, and “High” above 40.
+FREDTXLA <- FREDTXLA %>%
+  rename(commute_time_mean = B080ACS) %>%
+  mutate(
+    commute_time_bins = cut(
+      commute_time_mean,
+      breaks = c(-Inf, 20, 40, Inf),
+      labels = c("Low", "Middle", "High"),
+      right = TRUE
+    )
+  )
+
+# number of loans per capita (total divided by population).
+### Bringing the loan dataset
+lar = read_parquet("proc_data/larg3_county.parquet")
+
+FREDLARTXLA <- list(FREDTXLA, lar) %>%
+  reduce(full_join, by = c("year", "county_code"))
+
+FREDLARTXLA$number_loans_percapita=FREDLARTXLA$number_loans/FREDLARTXLA$POPULATION
+FREDLARTXLA$loan_amount_percapita=FREDLARTXLA$total_loan_amount/FREDLARTXLA$POPULATION
+
+#### number of high school graduates per capita (total divided by population).
+#this does not make sense
+
+var_label(FREDLARTXLA) <- list(
+  number_loans_percapita = "Number of originated loans Per Capita (action_taken == 'Loan originated')",
+  loan_amount_percapita = "Total dollar volume of loans Per Capital"
+)
+
+write_parquet(FREDLARTXLA, "proc_data/FREDLARTXLA.parquet")
+```
+
+# Q18.	Create the following charts. Place all sets of charts in a single graph using a panel design such as the cowplot package from your homework.
+***a.	Provide a histogram or kernel density plot of the median time on market by state and year. Describe the relationship between the mean and median estimates.***
 i.	Add a normal distribution to the plot. Does the distribution appear normally distributed?
 ii.	Please make sure that the histogram and density plot are different colors and clearly labeled. 
-b.	Provide a grouped bar chart of percentage loan refinancing by state and year with “Home ownership bin” as the grouping variable. 
+
+```{r Q18a}
+FREDLARTXLA <- read_parquet("proc_data/FREDLARTXLA.parquet")
+# Quick checks
+names(FREDLARTXLA)
+head(FREDLARTXLA)
+table(FREDLARTXLA$state)
+table(FREDLARTXLA$year)
+
+# Select only records with valid MEDAONMACOUNTY values
+q18a_data <- FREDLARTXLA %>%
+  filter(!is.na(MEDAONMACOUNTY))
+
+# Create histogram + density + normal overlay
+plot_hist <- ggplot(q18a_data, aes(x = MEDAONMACOUNTY, fill = state)) +
+  geom_histogram(aes(y = ..density..),
+                 bins = 30, alpha = 0.5, color = "black") +
+  geom_density(aes(color = state), size = 1.2) +
+  facet_grid(state ~ year) +
+  stat_function(
+    fun = dnorm,
+    args = list(
+      mean = mean(q18a_data$MEDAONMACOUNTY, na.rm = TRUE),
+      sd   = sd(q18a_data$MEDAONMACOUNTY, na.rm = TRUE)
+    ),
+    color = "darkred",
+    size  = 1,
+    linetype = "dashed"
+  ) +
+  labs(
+    title = "Distribution of Median Days on Market by State and Year",
+    subtitle = "Histogram with Density Curve and Normal Distribution Overlay",
+    x = "Median Days on Market",
+    y = "Density"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.position = "bottom",
+    strip.text = element_text(face = "bold")
+  )
+
+plot_hist
+```
+
+The distributions of median days on market differ noticeably by state and year.  In both LA and TX, the mean is larger than the median, indicating positive skew (a long right tail). The normal curves do not match the histogram/density well: the actual distributions are more skewed and have heavier right tails, so they are not normally distributed.
+
+***b.	Provide a grouped bar chart of percentage loan refinancing by state and year with “Home ownership bin” as the grouping variable.***
 i.	Make sure the groups are labeled clearly and colors are used to distinguish between groups.
 ii.	Label the top of the bars with the values.  
-19.	Subset the data to only the first year of data. Calculate the following correlation matrix by state and year: 
-a.	Take the log of all of the variables you have added (i.e. Equifax Subprime Credit, median price, population, poverty,…).  
-b.	Correlation matrix comparing all of the variables you have added to loan amount. 
+
+```{r Q18b}
+# Create homeownership bins
+fred_data_binned <- FREDLARTXLA %>%
+  filter(
+    !is.na(percentage_loan_refinancing),
+    !is.na(HOWNRATEACS)
+  ) %>%
+  mutate(
+    home_bin = case_when(
+      HOWNRATEACS < 60 ~ "<60%",
+      HOWNRATEACS >= 60 & HOWNRATEACS < 70 ~ "60–70%",
+      HOWNRATEACS >= 70 & HOWNRATEACS < 80 ~ "70–80%",
+      HOWNRATEACS >= 80 ~ "80%+",
+      TRUE ~ NA_character_
+    ),
+    home_bin = factor(
+      home_bin,
+      levels = c("<60%", "60–70%", "70–80%", "80%+")
+    )
+  )
+
+# Aggregate data: average % loan refinancing
+q18b_summary <- fred_data_binned %>%
+  group_by(state, year, home_bin) %>%
+  summarise(
+    avg_refi = mean(percentage_loan_refinancing, na.rm = TRUE),
+    .groups = "drop"
+  )
+
+# Final Enhanced 18(b) Plot
+plot_18b <- ggplot(q18b_summary,
+                   aes(x = factor(year),
+                       y = avg_refi,
+                       fill = home_bin)) +
+  geom_col(position = position_dodge(width = 0.7),
+           width = 0.6) +
+  geom_text(
+    aes(label = paste0(round(avg_refi, 1), "%")),
+    position = position_dodge(width = 0.7),
+    vjust = -0.4,
+    size = 3.5,
+    color = "black"
+  ) +
+  facet_wrap(~ state, nrow = 1) +
+  scale_fill_brewer(
+    palette = "Set2",
+    name    = "Homeownership Bin"
+  ) +
+  scale_y_continuous(
+    labels = function(x) paste0(x, "%"),
+    expand = expansion(mult = c(0, 0.10))
+  ) +
+  labs(
+    title    = "Percentage of Loan Refinancing by State, Year, and Homeownership Group",
+    subtitle = "Average share of loans refinanced, grouped by homeownership rate bin",
+    x        = "Year",
+    y        = "Average % Refinanced"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    # Bold axis titles ONLY
+    axis.title.x  = element_text(face = "bold", size = 13, margin = margin(t = 10)),
+    axis.title.y  = element_text(face = "bold", size = 13, margin = margin(r = 10)),
+    
+    # Regular axis tick labels
+    axis.text.x   = element_text(size = 11),
+    axis.text.y   = element_text(size = 11),
+    
+    # Main title bold (kept)
+    plot.title    = element_text(face = "bold", size = 18, hjust = 0.5),
+    plot.subtitle = element_text(size = 12, hjust = 0.5, margin = margin(b = 8)),
+    
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+    
+    # Facet title bold or plain? (kept bold for clarity)
+    strip.text    = element_text(face = "bold", size = 13),
+    strip.background = element_rect(fill = "grey90", color = NA),
+    
+    legend.position = "bottom",
+    legend.title    = element_text(face = "bold"),
+    legend.text     = element_text(size = 11)
+  )
+
+# Show plot
+plot_18b
+```
+
+# Q19.	Subset the data to only the first year of data. Calculate the following correlation matrix by state and year: 
+***a.	Take the log of all of the variables you have added (i.e. Equifax Subprime Credit, median price, population, poverty,…).***
+
+```{r Q19a}
+# Select numeric variables to log (exclude identifiers)
+vars_to_log <- FREDLARTXLA %>%
+  dplyr::select(-county_code,-state,-year,-commute_time_bins) %>%
+  dplyr::select(where(is.numeric)) %>%
+  names()
+# Create logged versions using log1p (log(1 + x))
+FREDLARTXLA_l <- FREDLARTXLA %>%
+  dplyr::mutate(
+    dplyr::across(dplyr::all_of(vars_to_log), ~ log1p(.x), .names = "log_{.col}"))
+
+FREDLARTXLA_l <- FREDLARTXLA_l %>%
+  dplyr::rename(
+    log_equifax_subprime_q4              = log_EQFXSUBPRIME,
+    log_median_days_on_market            = log_MEDAONMACOUNTY,
+    log_homeownership_rate_acs5          = log_HOWNRATEACS,
+    log_poverty_rate                     = log_PPAAWY,
+    log_mean_commute_time                = log_commute_time_mean,
+    log_crime_rate_fbitc                 = log_FBITC,
+    log_hs_grad_rate_acs5                = log_HC01ESTVC16,
+    log_snap_beneficiaries               = log_SNAPBR,
+    log_population_county_thousands      = log_POPULATION
+  )
+
+log_vars <- c(
+  "log_equifax_subprime_q4",
+  "log_median_days_on_market",
+  "log_homeownership_rate_acs5",
+  "log_poverty_rate",
+  "log_mean_commute_time",
+  "log_crime_rate_fbitc",
+  "log_hs_grad_rate_acs5",
+  "log_snap_beneficiaries",
+  "log_population_county_thousands"
+)
+```
+
+***b.	Correlation matrix comparing all of the variables you have added to loan amount.*** 
 i.	Exclude all variables that use/are derived from loan amount in the calculation of the variable (i.e. log(loan amount), (loan amount)/population, …) 
 ii.	Please round all the correlations to two decimal places in the software. 
 iii.	If your correlation is above 85%, then you need to reconsider part (i). It is unlikely the variable you have chosen is not directly related to loan amount.  
-c.	Correlation matrix comparing all of the logged variables to loan amount.   
+
+```{r Q19b}
+years_to_run <- c(2021, 2023)
+
+for (yr in years_to_run) {
+
+  cat("\n\n=========================================\n")
+  cat("     CORRELATION MATRIX FOR YEAR", yr, "\n")
+  cat("=========================================\n\n")
+
+  # Filter dataset for selected year
+  ds_year <- FREDLARTXLA_l %>%
+    filter(year == yr)
+
+  # Compute correlation matrix
+  corr_matrix <- ds_year %>%
+    select(all_of(log_vars)) %>%
+    cor(use = "pairwise.complete.obs") %>%
+    round(2)
+
+  # ---- Print matrix to console ----
+  cat("\nCorrelation Matrix (", yr, "):\n\n", sep = "")
+  print(corr_matrix)
+
+  # ---- Visualize correlation plot ----
+  corrplot(
+    corr_matrix,
+    method = "color",
+    type   = "upper",
+    tl.col = "black",
+    tl.srt = 45,
+    addCoef.col = "black",
+    number.cex = 0.7,
+    main = paste("Correlation Matrix for Year", yr)
+  )
+
+  # ---- Compute high correlations ----
+  high_corr_pairs <- corr_matrix %>%
+    as.data.frame() %>%
+    rownames_to_column("var1") %>%
+    pivot_longer(cols = -var1,
+                 names_to = "var2",
+                 values_to = "corr") %>%
+    filter(var1 < var2) %>%       # avoid duplicates
+    filter(abs(corr) > 0.85)      # threshold
+
+  # ---- Print high correlations ----
+  cat("\n\nHigh-Correlation Pairs (|corr| > 0.85) for Year ", yr, ":\n", sep = "")
+  if (nrow(high_corr_pairs) == 0) {
+    cat("  None found.\n")
+  } else {
+    print(high_corr_pairs)
+  }
+
+  cat("\n-----------------------------------------\n\n")
+}
+```
+
+***c.	Correlation matrix comparing all of the logged variables to loan amount.***
 i.	Please round all the correlations to two decimal places in the software. 
 
-20.	Plot a scatterplot of the strongest correlation with loan value you achieve in the previous question placing the average loan value on the y axis and the variable of your choice on the X axis. 
-a.	Does the graph support a linear relationship between the two variables?
-b.	Title and label your graph appropriately. 
-c.	Either do years separately in two side by side graphs or place all observations in a single plot and use either color or shapes to separate the two groups. 
-21.	Make a grouped boxplot or violin plot demonstrating the distribution of subprime mortgages by the home ownership bin variable made earlier. Each year should be a different color and the graph should have a clear legend. Use this plot to identify any extreme outlying counties.  
+```{r Q19c}
+years_to_run <- c(2021, 2023)
+
+for (yr in years_to_run) {
+
+  cat("\n\n=========================================\n")
+  cat(" CORRELATION WITH LOG LOAN AMOUNT PER CAPITA — YEAR", yr, "\n")
+  cat("=========================================\n\n")
+
+  # ----------------------------------------
+  # Filter dataset for the year
+  # ----------------------------------------
+  ds_year <- FREDLARTXLA_l %>% 
+    filter(year == yr)
+
+  # ----------------------------------------
+  # Build correlation matrix
+  # ----------------------------------------
+  vars_for_corr <- c(log_vars, "log_loan_amount_percapita")
+
+  corr_matrix <- ds_year %>%
+    select(all_of(vars_for_corr)) %>%
+    cor(use = "pairwise.complete.obs")
+
+  corr_matrix_rounded <- round(corr_matrix, 2)
+
+  # Print matrix
+  cat("Correlation Matrix (", yr, "):\n\n", sep = "")
+  print(corr_matrix_rounded)
+  cat("\n")
+
+  # ----------------------------------------
+  # Extract correlations with log_loan_amount_percapita
+  # ----------------------------------------
+  corr_vec <- corr_matrix_rounded[, "log_loan_amount_percapita"]
+
+  corr_df <- data.frame(
+    variable = names(corr_vec),
+    correlation = as.numeric(corr_vec)
+  )
+
+  # Remove the variable itself
+  corr_df <- corr_df %>% 
+    filter(variable != "log_loan_amount_percapita") %>%
+    arrange(desc(correlation))
+
+  # ----------------------------------------
+  # Add readable labels
+  # ----------------------------------------
+  label_map <- c(
+    log_equifax_subprime_q4         = "Log Equifax Subprime Credit Data (Q4)",
+    log_median_days_on_market       = "Log Market Hotness: Median Days on Market (EOY M12)",
+    log_homeownership_rate_acs5     = "Log Homeownership Rate (5-year estimate)",
+    log_poverty_rate                = "Log % of People of All Ages in Poverty",
+    log_mean_commute_time           = "Log Mean Commuting Time for Workers",
+    log_crime_rate_fbitc            = "Log Violent & Property Crime Offenses Known",
+    log_hs_grad_rate_acs5           = "Log High School Graduate or Higher (5-year estimate)",
+    log_snap_beneficiaries          = "Log SNAP Benefits Recipients",
+    log_population_county_thousands = "Log County Population (Thousands)"
+  )
+
+  corr_df <- corr_df %>%
+    mutate(
+      variable_label = label_map[variable],
+      label_hjust    = ifelse(correlation > 0, 1.1, -0.1)
+    )
+
+  # ----------------------------------------
+  # Print header for barplot
+  # ----------------------------------------
+  cat("Barplot for Year ", yr, "\n\n", sep = "")
+
+  # ----------------------------------------
+  # Plot
+  # ----------------------------------------
+  print(
+    ggplot(corr_df, aes(x = reorder(variable_label, correlation),
+                        y = correlation)) +
+      geom_col(fill = "#A5102D") +
+      geom_text(
+        aes(label = round(correlation, 2), hjust = label_hjust),
+        color = "white",
+        size = 3,
+        fontface = "bold"
+      ) +
+      coord_flip() +
+      scale_y_continuous(breaks = seq(-0.4, 1, by = 0.2)) +
+      labs(
+        title = paste("Correlation with Log Loan Amount Per Capita — Year", yr),
+        x = "Variable",
+        y = "Correlation"
+      ) +
+      theme_minimal(base_size = 16) +
+      theme(
+        plot.title = element_text(face = "bold", size = 14),
+        axis.title.x = element_text(size = 12, face = "bold"),
+        axis.title.y = element_text(size = 12, face = "bold"),
+        axis.text.x  = element_text(size = 12),
+        axis.text.y  = element_text(size = 8),
+        panel.grid.minor = element_blank()
+      )
+  )
+
+  cat("\n-----------------------------------------\n")
+}
+```
+
+# Q20.	Plot a scatterplot of the strongest correlation with loan value you achieve in the previous question placing the average loan value on the y axis and the variable of your choice on the X axis. 
+***a.	Does the graph support a linear relationship between the two variables?***
+***b.	Title and label your graph appropriately.***
+***c.	Either do years separately in two side by side graphs or place all observations in a single plot and use either color or shapes to separate the two groups.***
+
+## Scatterplot Loan Amount Per Capita and Violent & Crime Offensese Known (2021)
+The variable Violent & Crime Offensese Known is only available for 2021, it is the variable with the highest correlation with the Loan Amount Per Capita in 2021, for this reason we include the plot.
+
+```{r Q20_1}
+#Plots
+FRED_clean <- FREDLARTXLA_l %>%
+  filter(
+    !is.na(log_loan_amount_percapita),
+    !is.na(log_crime_rate_fbitc),
+    log_loan_amount_percapita > 0,
+    log_crime_rate_fbitc > 0
+  )
+
+ggplot(
+  FRED_clean, 
+  aes(x = log_crime_rate_fbitc, 
+      y = log_loan_amount_percapita, 
+      color = as.factor(year))
+) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Scatterplot of Loan Amount Per Capita and Violent & Property Crime Offenses Known",
+    x = "Log Violent & Property Crime Offenses Known",
+    y = "Log Total Loan Amount Per Capita",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+## Scatterplot Loan Amount Per Capita and Log of People of All Ages in Poverty (2021 & 2023)
+```{r Q20_2}
+FRED_clean2 <- FREDLARTXLA_l %>%
+  filter(
+    !is.na(log_loan_amount_percapita),
+    !is.na(log_poverty_rate),
+    log_loan_amount_percapita > 0,
+    log_poverty_rate > 0
+  )
+
+ggplot(
+  FRED_clean2,
+  aes(
+    x = log_poverty_rate,
+    y = log_loan_amount_percapita,
+    color = as.factor(year)
+  )
+) +
+  geom_point(alpha = 0.7) +
+  geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
+  labs(
+    title = "Scatterplot Loan Amount Per Capita and \nLog of People of All Ages in Poverty",
+    x = "Log of People of All Ages in Poverty",
+    y = "Log Total Loan Amount Per Capita",
+    color = "Year"
+  ) +
+  theme_minimal() +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right"
+  )
+```
+
+
+# Q21.	Make a grouped boxplot or violin plot demonstrating the distribution of subprime mortgages by the home ownership bin variable made earlier. Each year should be a different color and the graph should have a clear legend. Use this plot to identify any extreme outlying counties.  
+
+```{r Q21}
+#calculate outliers
+outliers <- fred_data_binned %>%
+  group_by(home_bin, year) %>% 
+  mutate(
+    Q1 = quantile(EQFXSUBPRIME, 0.25, na.rm = TRUE),
+    Q3 = quantile(EQFXSUBPRIME, 0.75, na.rm = TRUE),
+    IQR = Q3 - Q1,
+    lower = Q1 - 1.5 * IQR,
+    upper = Q3 + 1.5 * IQR
+  ) %>%
+  filter(EQFXSUBPRIME < lower | EQFXSUBPRIME > upper) %>%
+  ungroup
+
+#Box Plot, outliers labeled by county code
+ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, fill = as.factor(year))) +
+  geom_boxplot(outlier.color = "red", outlier.alpha = 0.7) +
+  geom_text_repel(
+    data = outliers,
+    aes(x = interaction(home_bin, year), 
+        y = EQFXSUBPRIME,
+        label = county_code),
+    color = "black",
+    size = 3,
+    max.overlaps = Inf,
+    box.padding = 0.4,
+    point.padding = 0.3,
+    min.segment.length = 0
+  ) +
+  labs(
+    title = "Distribution of Subprime Mortgages by Home Ownership",
+    x = "Home Ownership Bin + Year",
+    y = "Subprime Mortgage Rate",
+    fill = "Year" ) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Violin Plot, outliers labeled by county code
+ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, fill = as.factor(year))) +
+  geom_violin(trim = FALSE, alpha = 0.7) +
+  geom_point(
+    data = outliers,
+    aes(x = interaction(home_bin, year),
+        y = EQFXSUBPRIME),
+    color = "red",
+    alpha = 0.7,
+    size = 2 ) +
+  geom_text_repel(
+    data = outliers,
+    aes(x = interaction(home_bin, year),
+        y = EQFXSUBPRIME,
+        label = county_code),
+    color = "black",
+    size = 3,
+    max.overlaps = Inf,
+    box.padding = 0.4,
+    point.padding = 0.3,
+    min.segment.length = 0) +
+  labs(
+    title = "Distribution of Subprime Mortgages by Home Ownership (Violin Plot)",
+    x = "Home Ownership Bin + Year",
+    y = "Subprime Mortgage Rate",
+    fill = "Year"
+  ) +
+  theme_minimal(base_size = 16) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```

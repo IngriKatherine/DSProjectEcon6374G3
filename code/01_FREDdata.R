@@ -23,7 +23,7 @@ library(tidyr)
 library(arrow)
 library(purrr)
 
-# Globals (you can pass this as an argument instead if you prefer)
+# Globals
 api_key <- "93bb570ff595df729802a42870fb9436"
 
 ########## Helper: build series ID ##########
