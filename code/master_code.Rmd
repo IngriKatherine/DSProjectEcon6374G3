@@ -405,6 +405,14 @@ table_5a <- g3lar %>%
     min_loan  = dollar(min_loan, accuracy = 1),
     max_loan  = dollar(max_loan, accuracy = 1),
     mean_loan = dollar(mean_loan, accuracy = 1)
+  ) %>%
+  rename(
+    State                     = state_code,
+    Year                      = activity_year,
+    `Loan Type`               = loan_type,
+    `Minimum Loan Average Amount` = min_loan,
+    `Maximum Loan Average Amount` = max_loan,
+    `Mean Loan Average Amount`    = mean_loan
   )
 
 kable(
@@ -421,49 +429,27 @@ i.	Make sure loan type values read with appropriate labels inside the table prod
 ii.	Do not plot “Not Applicable”. Filter these values out of the graph (but do not remove from main data set).
 
 ```{r Q5b}
-# Question 5(b): Average loan amount by loan type, state,
-#                and year (grouped bar chart)
-# Data for Q5(b): drop only "Not Applicable" from the plot
 plot_5b_data <- g3lar %>%
   filter(
-    !is.na(loan_type),
-    loan_type != "Not Applicable"
+    !is.na(loan_purpose),
+    loan_purpose != "Not Applicable"
   ) %>%
-  group_by(state_code, activity_year, loan_type) %>%
+  group_by(state_code, activity_year, loan_purpose) %>%
   summarise(
     avg_loan = mean(loan_amount, na.rm = TRUE),
     .groups = "drop"
   )
 
-# Correct short labels mapping: short = long
-loan_labels <- c(
-  "Conventional" = "Conventional (not insured or guaranteed by FHA VA RHS or FSA)",
-  "FHA"          = "Federal Housing Administration insured (FHA)",
-  "VA"           = "Veterans Affairs guaranteed (VA)",
-  "USDA"         = "USDA RHS or FSA guaranteed"
-)
-
-plot_5b_data <- plot_5b_data %>%
-  mutate(
-    loan_type_short = fct_recode(loan_type, !!!loan_labels),
-    loan_type_short = fct_relevel(loan_type_short, "Conventional", "FHA", "VA", "USDA")
-  )
-
-# Final plot for Q5(b)
-plot_5b <- ggplot(
+ggplot(
   plot_5b_data,
   aes(
-    x = loan_type_short,
+    x = loan_purpose,
     y = avg_loan,
     fill = state_code
   )
 ) +
   geom_col(position = position_dodge(width = 0.7), width = 0.6) +
-  
-  # REMOVED geom_text() to remove bar labels
-  
   facet_wrap(~ activity_year, nrow = 1) +
-  
   scale_fill_manual(
     values = c("LA" = "#E64B35", "TX" = "#4DBBD5"),
     name = "State"
@@ -473,16 +459,15 @@ plot_5b <- ggplot(
     expand = expansion(mult = c(0, 0.12))
   ) +
   labs(
-    title = "Average Loan Amount by Loan Type, State, and Year",
-    caption = "Note: Loan types are Conventional, FHA, VA, USDA. \"Not Applicable\" is excluded from this plot.",
-    x = "Loan Type",
+    title = "Average Loan Amount by Loan Purpose, State, and Year",
+    x = "Loan Purpose",
     y = "Average Loan Amount ($)"
   ) +
-  theme_minimal(base_size = 14) +
+  theme_minimal(base_size = 12) +
   theme(
-    plot.title = element_text(face = "bold", size = 20),
+    plot.title = element_text(face = "bold", size = 12),
     plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
-    axis.text.x = element_text(angle = 20, hjust = 1, vjust = 1),
+    axis.text.x = element_text(angle = 30, hjust = 1, vjust = 1),
     axis.title.x = element_text(margin = margin(t = 10)),
     axis.title.y = element_text(margin = margin(r = 10)),
     panel.grid.major.x = element_blank(),
@@ -491,21 +476,22 @@ plot_5b <- ggplot(
     legend.position = "right",
     legend.title = element_text(face = "bold")
   )
-
-plot_5b
-
 ```
 
 ***c.	Provide a table of the average value of Interest rate for 2020 and 2022 by property type.***
 i.	Make sure property type is a meaningful label. 
 ```{r Q5c}
-# Question 5(c): Average interest rate by year and Property Type (2021 & 2023 only)
 table_5c <- g3lar %>% 
-  filter(activity_year %in% c(2021, 2023)) %>%  # dataset has only 2021 & 2023
+  filter(activity_year %in% c(2021, 2023)) %>% 
   group_by(activity_year, manufactured_home_secured_property_type) %>% 
   summarise(
     avg_interest_rate = mean(interest_rate, na.rm = TRUE),
     .groups = "drop"
+  ) %>%
+  rename(
+    Year = activity_year,
+    `Property Type` = manufactured_home_secured_property_type,
+    `Average Interest Rate` = avg_interest_rate
   )
 
 kable(table_5c,
@@ -518,14 +504,26 @@ kable(table_5c,
 i.	Make sure that only the counts are in the table (no percentages, no row or column totals, ONLY counts) 
 ii.	Examine the “Not Available” category. What percentage of the data falls into this category? Does it the distribution of missing data look random over the different actions taken on loans? 
 ```{r Q5d}
-# Q5(d)(i): Two-way table of counts only
 table_5d <- g3lar %>%
-  count(action_taken, derived_ethnicity, name = "count") %>%
-  mutate(count = comma(count))
+  count(
+    `Action Taken` = action_taken,
+    Ethnicity = derived_ethnicity,
+    name = "Count"
+  ) %>%
+  # Convert to two-way table
+  pivot_wider(
+    names_from  = `Action Taken`,
+    values_from = Count,
+    values_fill = 0
+  ) %>%
+  # Format numbers with commas
+  mutate(across(where(is.numeric), comma))
 
-kable(table_5d,
-      format = "markdown",
-      caption = "Count of Loans by Action Taken and Derived Ethnicity") %>%
+kable(
+  table_5d,
+  format  = "markdown",
+  caption = "Count of Loans by Action Taken and Ethnicity 2021 & 2023"
+) %>%
   kable_styling(full_width = FALSE)
 
 # Q5(d)(ii): Percentage of records with derived_ethnicity
@@ -571,22 +569,32 @@ data_age <- g3lar %>%
     )
   )
 
-table_5e <- data_age %>%
+# Long table with percent
+table_long <- data_age %>%
   count(action_taken, age_group, name = "n") %>%
   group_by(action_taken) %>%
-  mutate(pct = round(100 * n / sum(n), 1)) %>%   # ONLY percentages
-  select(action_taken, age_group, pct) %>%       # drop counts
+  mutate(pct = round(100 * n / sum(n), 1)) %>%
   ungroup()
 
-kable(table_5e,
-      format = "markdown",
-      caption = "Percentage of Applications by Age Group and Action Taken") %>%
+# Convert to two-way table: action_taken rows × age_group columns
+table_5e <- table_long %>%
+  select(action_taken, age_group, pct) %>%
+  tidyr::pivot_wider(
+    names_from = age_group,
+    values_from = pct
+  ) %>%
+  rename(`Action Taken` = action_taken)
+
+kable(
+  table_5e,
+  format = "markdown",
+  caption = "Percentage of Applications by Age Group and Action Taken"
+) %>%
   kable_styling(full_width = FALSE)
 ```
 
 
 # Q6	Provide the following statistical summaries. 
-
 ***a.	Provide a table of minimum, maximum, and average loan value by loan type.***
 i.	Please make sure that you use the values for loan type and not the numeric codes. (You can use a format or recode the variable , but it should read something like FHA not “2”).
 
@@ -608,13 +616,22 @@ table_6a <- g3lar %>%
     min_value  = dollar(min_value),
     max_value  = dollar(max_value),
     mean_value = dollar(round(mean_value, 0))
+  ) %>%
+  rename(
+    `Loan Type`               = loan_type_label,
+    `Minimum Loan Average Amount` = min_value,
+    `Maximum Loan Average Amount` = max_value,
+    `Mean Loan Average Amount`    = mean_value
   )
+
 
 kable(table_6a,
       format = "markdown",
       caption = "Loan Amount Summary by Loan Type") %>%
   kable_styling(full_width = FALSE)
 ```
+
+No N/A results were found, so those categories were excluded from the final two-way table.
 
 ***b.	Provide similar information graphically. Provide a grouped bar chart with the average loan value by loan type grouped by state and year.***
 i.	Label the averages for each bar on the chart.
@@ -623,38 +640,96 @@ avg_plot_data <- g3lar %>%
   group_by(state_code, activity_year, loan_type_label) %>%
   summarize(avg_value = mean(loan_amount, na.rm = TRUE))
 
-#Grouped bar chart
-ggplot(avg_plot_data, aes(x = state_code, y = avg_value, fill = loan_type_label)) +
-  geom_bar(stat = "identity", position = "dodge") +
-  geom_text(aes(label = round(avg_value, 0)),
-            position = position_dodge(width = 0.9),
-            vjust = -0.25,
-            size = 3) +
-  facet_wrap(~ activity_year) +
+loan_types <- sort(unique(avg_plot_data$loan_type_label))
+palette_colors <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488")
+palette_colors <- rep(palette_colors, length.out = length(loan_types))
+loan_colors <- setNames(palette_colors, loan_types)
+
+ggplot(
+  avg_plot_data,
+  aes(
+    x = state_code,
+    y = avg_value,
+    fill = loan_type_label
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.7),
+    width = 0.6
+  ) +
+  geom_text(
+    aes(label = dollar(avg_value, accuracy = 1)),
+    position = position_dodge(width = 0.7),
+    vjust = -0.25,
+    size = 3.5
+  ) +
+
+  facet_wrap(~ activity_year, nrow = 1) +
+  scale_fill_manual(
+    values = loan_colors,
+    name=""
+  ) +
+
+  scale_y_continuous(
+    labels = dollar_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+
   labs(
     title = "Average Loan Value by Loan Type, State, and Year",
     x = "State",
-    y = "Average Loan Value($)",
-    fill = "Loan Type"
+    y = "Average Loan Value ($)"
   ) +
-  scale_y_continuous(
-    breaks = seq(0, 400000, 50000),
-    labels = scales::comma) +
-  theme_bw()
+
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+
+    strip.text = element_text(face = "bold", size = 11),
+
+    legend.position = "bottom",
+    legend.title = element_text(face = "bold"),
+    legend.box = "horizontal"
+    ) +
+  guides(fill = guide_legend(ncol = 2)) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 5))
+
 ```
 
 ***c.	Provide a table of the average value of loans for 2023 and 2021 by property type.*** 
 i.	Make sure loan type values read with appropriate labels inside the table produced by the software. (You can use a format or recode the variable, but for example 2 should be replaced with "Manufactured housing" in the table. 
 
 ```{r Q6c}
+g3lar$property_type <- recode(g3lar$manufactured_home_secured_property_type,
+                                 "1" = "Site-built",
+                                 "2" = "Manufactured housing",
+                              "Not appliacble" = "Not applicable")
+
+# Replace NA with "Not applicable"
+g3lar$property_type[is.na(g3lar$property_type)] <- "Not applicable"
+
+
 table_6c <- g3lar %>%
-  group_by(activity_year, manufactured_home_secured_property_type) %>%
+  group_by(activity_year, property_type) %>%
   summarize(
     avg_value = mean(loan_amount, na.rm = TRUE),
     .groups = "drop"
   ) %>%
   mutate(
     avg_value = dollar(round(avg_value, 0))   # add commas + $ + rounding
+  ) %>%
+  rename(
+    Year = activity_year,
+    `Property Type` = property_type,
+    `Loan Average Amount` = avg_value
   )
 
 kable(table_6c,
@@ -680,7 +755,7 @@ cn <- colnames(tab_6d)
 cn[cn == "" | is.na(cn)] <- "Missing / blank"
 colnames(tab_6d) <- cn
 
-# Convert to data frame for kable, manually add action_taken as a column
+# Convert to data frame for kable
 tab_6d_df_mat <- as.data.frame.matrix(tab_6d)
 
 table_6d_df <- data.frame(
@@ -688,10 +763,17 @@ table_6d_df <- data.frame(
   tab_6d_df_mat,
   row.names = NULL,
   check.names = FALSE
-)
+) %>%
+  rename(`Action Taken` = action_taken)
+
+table_6d_df_formatted <- table_6d_df %>%
+  mutate(across(
+    .cols = where(is.numeric),
+    .fns  = ~ format(.x, big.mark = ",", scientific = FALSE)
+  ))
 
 kable(
-  table_6d_df,
+  table_6d_df_formatted,
   format = "markdown",
   caption = "Cross-Tabulation of Action Taken by Occupancy Type (Counts Only)"
 ) %>%
@@ -703,92 +785,205 @@ percent_not_applicable <- mean(g3lar$action_taken == "Not Applicable", na.rm = T
 
 ***The percentage of data in "Not Applicable" for action taken is `r percent_not_applicable*100`***
 
-
-The graph of the Action Taken by Occupancy is quite hard to read, so we included individual plots of each Occupancy to make it clearer.
 ```{r Q6dg}
-ggplot(g3lar, aes(x = action_taken, fill = occupancy_type)) +
-  geom_bar(position = "dodge") + 
-  geom_text(
-    stat = "count",
-    aes(label = ..count..),
-    position = position_dodge(width = 0.9),
-    vjust = -0.3,
-    size = 3.2
+# 1. Collapse data first (for speed)
+action_plot_data <- g3lar %>%
+  count(action_taken, occupancy_type, name = "n")
+
+# 2. Build a dynamic, safe color mapping like in your avg_plot_data plot
+occ_types <- sort(unique(action_plot_data$occupancy_type))
+palette_colors <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488")
+palette_colors <- rep(palette_colors, length.out = length(occ_types))
+occ_colors <- setNames(palette_colors, occ_types)
+
+# 3. Plot in the same style as your reference code
+ggplot(
+  action_plot_data,
+  aes(
+    x = action_taken,
+    y = n,
+    fill = occupancy_type
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.7),
+    width = 0.6
   ) +
+  geom_text(
+    aes(label = comma(n)),
+    position = position_dodge(width = 0.8),
+    vjust = -0.25,
+    hjust = 0.5,
+    size = 2.5,
+    color = "black"
+  ) +
+  scale_fill_manual(
+    values = occ_colors,
+    name = ""
+  ) +
+
+  scale_y_continuous(
+    labels = comma,
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+
   labs(
     title = "Action Taken by Occupancy Type",
     x = "Action Taken",
     y = "Count",
-    fill = "Occupancy Type"
+    caption = "Note: Counts reflect the number of applications by action taken and occupancy type."
   ) +
-  scale_fill_manual(
-    values = c(
-      "Principal residence"   = "#E64B35",
-      "Second residence"      = "#81F121",
-      "Investment property"   = "#4DBBD5"
-    )
-  ) +
-  scale_y_continuous(
-    breaks = seq(0, 5000000, 100000),
-    labels = scales::comma
-  ) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
 
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank(),
+
+    strip.text = element_text(face = "bold", size = 11),
+
+    legend.position = "bottom",
+    legend.title    = element_text(face = "bold")
+  ) +
+  guides(fill = guide_legend(ncol = 3)) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12))
 ```
 
-Due to the large difference in Values, it was difficult to see certain variables on the bar chart, so we added separate bar charts for each occupancy type for better comparison.
+The “Action Taken by Occupancy” graph was difficult to interpret, so we provided individual plots for each occupancy type to make the information clearer. Because the values varied significantly across categories, some variables were hard to distinguish in the combined bar chart. To improve readability and comparison, we added separate bar charts for each occupancy type.
 
 ```{r Q6dg2}
-ggplot(g3lar %>% filter(occupancy_type == "Principal residence"), 
-       aes(x = action_taken)) +
-  geom_bar(fill = "#E64B35") +
-  geom_text(
-    stat = "count",
-    aes(label = ..count..),
-    vjust = -0.3,
-    size = 5
-  ) +
-  labs(
-    title = "Action Taken — Principal Residence",
-    x = "Action Taken",
-    y = "Count"
-  ) +
-  scale_y_continuous(labels = scales::comma) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+# Filtered, pre-collapsed data for each occupancy type
+principal_data <- action_plot_data %>%
+  filter(occupancy_type == "Principal residence")
 
-ggplot(g3lar %>% filter(occupancy_type == "Second residence"), 
-       aes(x = action_taken)) +
-  geom_bar(fill = "#81F121") +
-  geom_text(
-    stat = "count",
-    aes(label = ..count..),
-    vjust = -0.3,
-    size = 5
-  ) +
-  labs(
-    title = "Action Taken — Second Residence",
-    x = "Action Taken",
-    y = "Count"
-  ) +
-  scale_y_continuous(labels = scales::comma) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+second_data <- action_plot_data %>%
+  filter(occupancy_type == "Second residence")
 
-ggplot(g3lar %>% filter(occupancy_type == "Investment property"), 
-       aes(x = action_taken)) +
-  geom_bar(fill = "#4DBBD5") +
+investment_data <- action_plot_data %>%
+  filter(occupancy_type == "Investment property")
+
+## 1. Principal residence
+ggplot(
+  principal_data,
+  aes(x = action_taken, y = n)
+) +
+  geom_col(
+    fill = occ_colors["Principal residence"],
+    width = 0.6
+  ) +
   geom_text(
-    stat = "count",
-    aes(label = ..count..),
-    vjust = -0.3,
-    size = 5
+    aes(label = comma(n)),
+    vjust = -0.25,
+    size = 2.5,
+    color = "black"
   ) +
+  scale_y_continuous(
+    labels = comma,
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +
   labs(
-    title = "Action Taken — Investment Property",
-    x = "Action Taken",
-    y = "Count"
+    title   = "Action Taken for Occupancy Principal Residence",
+    x       = "Action Taken",
+    y       = "Count",
+    caption = "Note: Counts reflect the number of applications by action taken for principal residences."
   ) +
-  scale_y_continuous(labels = scales::comma) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank()
+  )
+
+## 2. Second residence
+ggplot(
+  second_data,
+  aes(x = action_taken, y = n)
+) +
+  geom_col(
+    fill = occ_colors["Second residence"],
+    width = 0.6
+  ) +
+  geom_text(
+    aes(label = comma(n)),
+    vjust = -0.25,
+    size = 2.5,
+    color = "black"
+  ) +
+  scale_y_continuous(
+    labels = comma,
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +
+  labs(
+    title   = "Action Taken for Occupancy Second Residence",
+    x       = "Action Taken",
+    y       = "Count",
+    caption = "Note: Counts reflect the number of applications by action taken for second residences."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank()
+  )
+
+## 3. Investment property
+ggplot(
+  investment_data,
+  aes(x = action_taken, y = n)
+) +
+  geom_col(
+    fill = occ_colors["Investment property"],
+    width = 0.6
+  ) +
+  geom_text(
+    aes(label = comma(n)),
+    vjust = -0.25,
+    size = 2.5,
+    color = "black"
+  ) +
+  scale_y_continuous(
+    labels = comma,
+    expand = expansion(mult = c(0, 0.12))
+  ) +
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 12)) +
+  labs(
+    title   = "Action Taken for Occupancy Investment Property",
+    x       = "Action Taken",
+    y       = "Count",
+    caption = "Note: Counts reflect the number of applications by action taken for investment properties."
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
+    panel.grid.major.x = element_blank(),
+    panel.grid.minor   = element_blank()
+  )
 ```
 
 # Q7.	Do the following without creating a new dataset (i.e. filter the data): Based on summary statistics, is there any difference in the rates of “open-end_line_of_credit” by “derived_ethnicity” after applying the following filters: 
@@ -1874,20 +2069,25 @@ ii.	Please make sure that the histogram and density plot are different colors an
 ```{r Q18a}
 FREDLARTXLA <- read_parquet("proc_data/FREDLARTXLA.parquet")
 # Quick checks
-names(FREDLARTXLA)
-head(FREDLARTXLA)
-table(FREDLARTXLA$state)
-table(FREDLARTXLA$year)
+#names(FREDLARTXLA)
+#head(FREDLARTXLA)
+#table(FREDLARTXLA$state)
+#table(FREDLARTXLA$year)
+
+# Select only records with valid MEDAONMACOUNTY values
+palette_colors <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488")
 
 # Select only records with valid MEDAONMACOUNTY values
 q18a_data <- FREDLARTXLA %>%
   filter(!is.na(MEDAONMACOUNTY))
 
 # Create histogram + density + normal overlay
-plot_hist <- ggplot(q18a_data, aes(x = MEDAONMACOUNTY, fill = state)) +
+ggplot(q18a_data, aes(x = MEDAONMACOUNTY, fill = state)) +
   geom_histogram(aes(y = ..density..),
                  bins = 30, alpha = 0.5, color = "black") +
-  geom_density(aes(color = state), size = 1.2) +
+  geom_density(aes(color = state, fill = state),
+               size = 1.2,
+               alpha = 0.3) +   # <<< transparency added
   facet_grid(state ~ year) +
   stat_function(
     fun = dnorm,
@@ -1903,15 +2103,14 @@ plot_hist <- ggplot(q18a_data, aes(x = MEDAONMACOUNTY, fill = state)) +
     title = "Distribution of Median Days on Market by State and Year",
     subtitle = "Histogram with Density Curve and Normal Distribution Overlay",
     x = "Median Days on Market",
-    y = "Density"
+    y = "Density",
+    caption="Note: red dashed line represents the normal distribution."
   ) +
   theme_minimal(base_size = 14) +
   theme(
     legend.position = "bottom",
     strip.text = element_text(face = "bold")
   )
-
-plot_hist
 ```
 
 The distributions of median days on market differ noticeably by state and year.  In both LA and TX, the mean is larger than the median, indicating positive skew (a long right tail). The normal curves do not match the histogram/density well: the actual distributions are more skewed and have heavier right tails, so they are not normally distributed.
@@ -1947,65 +2146,71 @@ q18b_summary <- fred_data_binned %>%
   summarise(
     avg_refi = mean(percentage_loan_refinancing, na.rm = TRUE),
     .groups = "drop"
-  )
+  ) %>%
+  rename(State = state)
 
-# Final Enhanced 18(b) Plot
-plot_18b <- ggplot(q18b_summary,
-                   aes(x = factor(year),
-                       y = avg_refi,
-                       fill = home_bin)) +
-  geom_col(position = position_dodge(width = 0.7),
-           width = 0.6) +
+# Color palette to mirror the first plot's style
+home_bins <- sort(unique(q18b_summary$home_bin))
+palette_colors <- c("#E64B35", "#4DBBD5", "#00A087", "#3C5488")
+palette_colors <- rep(palette_colors, length.out = length(home_bins))
+home_colors <- setNames(palette_colors, home_bins)
+
+# Graph (styled like your loan plot)
+ggplot(
+  q18b_summary,
+  aes(
+    x   = factor(year),
+    y   = avg_refi,
+    fill = home_bin
+  )
+) +
+  geom_col(
+    position = position_dodge(width = 0.7),
+    width    = 0.6
+  ) +
   geom_text(
     aes(label = paste0(round(avg_refi, 1), "%")),
     position = position_dodge(width = 0.7),
-    vjust = -0.4,
-    size = 3.5,
-    color = "black"
+    vjust    = -0.25,
+    size     = 3.5
   ) +
-  facet_wrap(~ state, nrow = 1) +
-  scale_fill_brewer(
-    palette = "Set2",
-    name    = "Homeownership Bin"
+
+  facet_wrap(~ State, nrow = 1) +
+  scale_fill_manual(
+    values = home_colors,
+    name   = ""
   ) +
+
   scale_y_continuous(
     labels = function(x) paste0(x, "%"),
-    expand = expansion(mult = c(0, 0.10))
+    expand = expansion(mult = c(0, 0.12))
   ) +
+
   labs(
-    title    = "Percentage of Loan Refinancing by State, Year, and Homeownership Group",
-    subtitle = "Average share of loans refinanced, grouped by homeownership rate bin",
-    x        = "Year",
-    y        = "Average % Refinanced"
+    title = "Average % Loan Refinancing by Homeownership Group, State, and Year",
+    x     = "Year",
+    y     = "Average % Refinanced"
   ) +
-  theme_minimal(base_size = 14) +
+
+  theme_minimal(base_size = 12) +
   theme(
-    # Bold axis titles ONLY
-    axis.title.x  = element_text(face = "bold", size = 13, margin = margin(t = 10)),
-    axis.title.y  = element_text(face = "bold", size = 13, margin = margin(r = 10)),
-    
-    # Regular axis tick labels
-    axis.text.x   = element_text(size = 11),
-    axis.text.y   = element_text(size = 11),
-    
-    # Main title bold (kept)
-    plot.title    = element_text(face = "bold", size = 18, hjust = 0.5),
-    plot.subtitle = element_text(size = 12, hjust = 0.5, margin = margin(b = 8)),
-    
+    plot.title   = element_text(face = "bold", size = 12),
+    plot.caption = element_text(size = 10, hjust = 0, margin = margin(t = 10)),
+
+    axis.text.x  = element_text(angle = 0, hjust = 0.5, vjust = 1),
+    axis.title.x = element_text(margin = margin(t = 10)),
+    axis.title.y = element_text(margin = margin(r = 10)),
+
     panel.grid.major.x = element_blank(),
     panel.grid.minor   = element_blank(),
-    
-    # Facet title bold or plain? (kept bold for clarity)
-    strip.text    = element_text(face = "bold", size = 13),
-    strip.background = element_rect(fill = "grey90", color = NA),
-    
+
+    strip.text = element_text(face = "bold", size = 11),
+
     legend.position = "bottom",
     legend.title    = element_text(face = "bold"),
-    legend.text     = element_text(size = 11)
-  )
-
-# Show plot
-plot_18b
+    legend.box      = "horizontal"
+  ) +
+  guides(fill = guide_legend(ncol = 4))
 ```
 
 # Q19.	Subset the data to only the first year of data. Calculate the following correlation matrix by state and year: 
@@ -2046,6 +2251,18 @@ log_vars <- c(
   "log_snap_beneficiaries",
   "log_population_county_thousands"
 )
+
+ds_2021 <- FREDLARTXLA_l %>% 
+  filter(year == 2021)
+
+ds_2023 <- FREDLARTXLA_l %>% 
+  filter(year == 2023)
+
+FREDLARTXLA_l_yrs <- list(
+  "2021" = ds_2021,
+  "2023" = ds_2023
+)
+
 ```
 
 ***b.	Correlation matrix comparing all of the variables you have added to loan amount.*** 
@@ -2054,110 +2271,11 @@ ii.	Please round all the correlations to two decimal places in the software.
 iii.	If your correlation is above 85%, then you need to reconsider part (i). It is unlikely the variable you have chosen is not directly related to loan amount.  
 
 ```{r Q19b}
-years_to_run <- c(2021, 2023)
-
-for (yr in years_to_run) {
-
-  cat("\n\n=========================================\n")
-  cat("     CORRELATION MATRIX FOR YEAR", yr, "\n")
-  cat("=========================================\n\n")
-
-  # Filter dataset for selected year
-  ds_year <- FREDLARTXLA_l %>%
-    filter(year == yr)
-
-  # Compute correlation matrix
-  corr_matrix <- ds_year %>%
-    select(all_of(log_vars)) %>%
-    cor(use = "pairwise.complete.obs") %>%
-    round(2)
-
-  # ---- Print matrix to console ----
-  cat("\nCorrelation Matrix (", yr, "):\n\n", sep = "")
-  print(corr_matrix)
-
-  # ---- Visualize correlation plot ----
-  corrplot(
-    corr_matrix,
-    method = "color",
-    type   = "upper",
-    tl.col = "black",
-    tl.srt = 45,
-    addCoef.col = "black",
-    number.cex = 0.7,
-    main = paste("Correlation Matrix for Year", yr)
-  )
-
-  # ---- Compute high correlations ----
-  high_corr_pairs <- corr_matrix %>%
-    as.data.frame() %>%
-    rownames_to_column("var1") %>%
-    pivot_longer(cols = -var1,
-                 names_to = "var2",
-                 values_to = "corr") %>%
-    filter(var1 < var2) %>%       # avoid duplicates
-    filter(abs(corr) > 0.85)      # threshold
-
-  # ---- Print high correlations ----
-  cat("\n\nHigh-Correlation Pairs (|corr| > 0.85) for Year ", yr, ":\n", sep = "")
-  if (nrow(high_corr_pairs) == 0) {
-    cat("  None found.\n")
-  } else {
-    print(high_corr_pairs)
-  }
-
-  cat("\n-----------------------------------------\n\n")
-}
-```
-
-***c.	Correlation matrix comparing all of the logged variables to loan amount.***
-i.	Please round all the correlations to two decimal places in the software. 
-
-```{r Q19c}
-years_to_run <- c(2021, 2023)
-
-for (yr in years_to_run) {
-
-  cat("\n\n=========================================\n")
-  cat(" CORRELATION WITH LOG LOAN AMOUNT PER CAPITA — YEAR", yr, "\n")
-  cat("=========================================\n\n")
-
-  # ----------------------------------------
-  # Filter dataset for the year
-  # ----------------------------------------
-  ds_year <- FREDLARTXLA_l %>% 
-    filter(year == yr)
-
-  # ----------------------------------------
-  # Build correlation matrix
-  # ----------------------------------------
-  vars_for_corr <- c(log_vars, "log_loan_amount_percapita")
-
-  corr_matrix <- ds_year %>%
-    select(all_of(vars_for_corr)) %>%
-    cor(use = "pairwise.complete.obs")
-
-  corr_matrix_rounded <- round(corr_matrix, 2)
-
-  # Print matrix
-  cat("Correlation Matrix (", yr, "):\n\n", sep = "")
-  print(corr_matrix_rounded)
-  cat("\n")
-
-  # ----------------------------------------
-  # Extract correlations with log_loan_amount_percapita
-  # ----------------------------------------
-  corr_vec <- corr_matrix_rounded[, "log_loan_amount_percapita"]
-
-  corr_df <- data.frame(
-    variable = names(corr_vec),
-    correlation = as.numeric(corr_vec)
-  )
-
-  # Remove the variable itself
-  corr_df <- corr_df %>% 
-    filter(variable != "log_loan_amount_percapita") %>%
-    arrange(desc(correlation))
+# Compute correlation matrix
+corr_matrix <- ds_2021 %>%
+  select(all_of(log_vars)) %>%
+  cor(use = "pairwise.complete.obs") %>%
+  round(2)
 
   # ----------------------------------------
   # Add readable labels
@@ -2174,6 +2292,87 @@ for (yr in years_to_run) {
     log_population_county_thousands = "Log County Population (Thousands)"
   )
 
+colnames(corr_matrix) <- label_map[colnames(corr_matrix)]
+rownames(corr_matrix) <- label_map[rownames(corr_matrix)]
+
+# ---- Visualize correlation plot ----
+par(family = "sans", cex = 1)
+
+corrplot(
+  corr_matrix,
+  method = "color",
+  type = "upper",
+  tl.col = "black",
+  tl.srt = 45,
+  tl.cex = 0.5,
+  addCoef.col = "black",
+  number.cex = 0.5,
+  mar = c(0, 0, 3, 0)
+)
+title(
+  main = "Correlation Matrix for Year 2021",
+  cex.main = 1,
+  font.main = 2
+)
+```
+
+***High-correlations >0.85***
+```{r Q19b_1}
+# ---- Compute high correlations ----
+high_corr_pairs <- corr_matrix %>%
+  as.data.frame() %>%
+  rownames_to_column("var1") %>%
+  pivot_longer(cols = -var1,
+               names_to = "var2",
+               values_to = "corr") %>%
+  filter(var1 < var2) %>%       # avoid duplicates
+  filter(abs(corr) > 0.85)      # threshold
+
+# ---- Print high correlations ----
+if (nrow(high_corr_pairs) == 0) {
+  cat("  None found.\n")
+} else {
+    print(high_corr_pairs)
+}
+```
+
+***c.	Correlation matrix comparing all of the logged variables to loan amount.***
+i.	Please round all the correlations to two decimal places in the software. 
+
+We ran the correlation analysis for both 2021 and 2023 to capture potential year-to-year differences and to identify the variable with the highest correlation in 2023. This was necessary because the variable with the highest correlation in 2021 did not have data available for both years.
+
+```{r Q19c}
+vars_for_corr <- c(log_vars, "log_loan_amount_percapita")
+years_to_run <- c(2021, 2023)
+
+for (yr in years_to_run) {
+
+  df <- FREDLARTXLA_l_yrs[[as.character(yr)]]  
+  # Build correlation matrix
+  corr_matrix <- df %>%
+    select(all_of(vars_for_corr)) %>%
+    cor(use = "pairwise.complete.obs")
+
+  corr_matrix_rounded <- round(corr_matrix, 2)
+
+  # Print matrix
+  #print(corr_matrix_rounded)
+
+  # ----------------------------------------
+  # Extract correlations with log_loan_amount_percapita
+  # ----------------------------------------
+  corr_vec <- corr_matrix_rounded[, "log_loan_amount_percapita"]
+
+  corr_df <- data.frame(
+    variable = names(corr_vec),
+    correlation = as.numeric(corr_vec)
+  )
+
+  # Remove the variable itself
+  corr_df <- corr_df %>% 
+    filter(variable != "log_loan_amount_percapita") %>%
+    arrange(desc(correlation))
+
   corr_df <- corr_df %>%
     mutate(
       variable_label = label_map[variable],
@@ -2181,12 +2380,7 @@ for (yr in years_to_run) {
     )
 
   # ----------------------------------------
-  # Print header for barplot
-  # ----------------------------------------
-  cat("Barplot for Year ", yr, "\n\n", sep = "")
-
-  # ----------------------------------------
-  # Plot
+  # Barplot
   # ----------------------------------------
   print(
     ggplot(corr_df, aes(x = reorder(variable_label, correlation),
@@ -2202,7 +2396,7 @@ for (yr in years_to_run) {
       scale_y_continuous(breaks = seq(-0.4, 1, by = 0.2)) +
       labs(
         title = paste("Correlation with Log Loan Amount Per Capita — Year", yr),
-        x = "Variable",
+        x = "",
         y = "Correlation"
       ) +
       theme_minimal(base_size = 16) +
@@ -2215,13 +2409,19 @@ for (yr in years_to_run) {
         panel.grid.minor = element_blank()
       )
   )
-
-  cat("\n-----------------------------------------\n")
 }
 ```
 
 # Q20.	Plot a scatterplot of the strongest correlation with loan value you achieve in the previous question placing the average loan value on the y axis and the variable of your choice on the X axis. 
 ***a.	Does the graph support a linear relationship between the two variables?***
+Yes, the graphs support the presence of linear relationships.
+
+In the 2021 scatterplot of Loan Amount Per Capita vs. Violent & Property Crime Offenses Known, the points show an upward trend, and the fitted regression line captures a clear positive linear association: as the log of crime offenses increases, the log of loan amount per capita also tends to increase.
+
+In the scatterplots of Loan Amount Per Capita vs. Log of People of All Ages in Poverty (2021 & 2023), both years exhibit a downward trend, with fitted regression lines showing consistent negative slopes. This indicates a negative linear relationship: counties with higher poverty levels tend to have lower loan amounts per capita. Although 2021 and 2023 differ slightly in magnitude and slope, the linear pattern is visible in both.
+
+Overall, the scatterplots show trends that align well with straight-line patterns, and the fitted regression lines reflect this. Therefore, the plots provide visual evidence supporting linear relationships between the variables in both years.
+
 ***b.	Title and label your graph appropriately.***
 ***c.	Either do years separately in two side by side graphs or place all observations in a single plot and use either color or shapes to separate the two groups.***
 
@@ -2248,11 +2448,11 @@ ggplot(
   geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
   labs(
     title = "Scatterplot of Loan Amount Per Capita and Violent & Property Crime Offenses Known",
-    x = "Log Violent & Property Crime Offenses Known",
-    y = "Log Total Loan Amount Per Capita",
+    x = "Logarithm of the number of violent and property crime offenses known",
+    y = "Logarithm of the total loan amount per capita $US",
     color = "Year"
   ) +
-  theme_minimal() +
+  theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right"
@@ -2281,11 +2481,11 @@ ggplot(
   geom_smooth(method = "lm", se = FALSE, linewidth = 1) +
   labs(
     title = "Scatterplot Loan Amount Per Capita and \nLog of People of All Ages in Poverty",
-    x = "Log of People of All Ages in Poverty",
-    y = "Log Total Loan Amount Per Capita",
+    x = "Logarithm of the number of people of all ages in poverty",
+    y = "Logarithm of the total loan amount per capita $US",
     color = "Year"
   ) +
-  theme_minimal() +
+  theme_minimal(base_size = 12) +
   theme(
     plot.title = element_text(hjust = 0.5, face = "bold"),
     legend.position = "right"
@@ -2295,7 +2495,8 @@ ggplot(
 
 # Q21.	Make a grouped boxplot or violin plot demonstrating the distribution of subprime mortgages by the home ownership bin variable made earlier. Each year should be a different color and the graph should have a clear legend. Use this plot to identify any extreme outlying counties.  
 
-```{r Q21}
+##Box Plot
+```{r Q21_1}
 #calculate outliers
 outliers <- fred_data_binned %>%
   group_by(home_bin, year) %>% 
@@ -2328,10 +2529,22 @@ ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, 
     title = "Distribution of Subprime Mortgages by Home Ownership",
     x = "Home Ownership Bin + Year",
     y = "Subprime Mortgage Rate",
-    fill = "Year" ) +
-  theme_minimal(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+    fill = "Year" )  +
+  scale_y_continuous(labels = scales::percent_format())  +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+    )
 
+```
+
+The box plot shows that the distribution of subprime mortgages varies by homeownership level. For homeownership below 60%, we observe values around 35% in 2021, while in 2023 the values are higher. In 2023, this lowest homeownership group experienced the highest share of subprime mortgages, whereas in 2021 the highest levels were observed in the 60–70% homeownership group. It is also striking that the size of the box for homeowners increases in 2023 compared to 2021, indicating greater dispersion and longer tails in both directions. For both years, as the homeownership rate increases, the subprime mortgage rate tends to decrease. In 2021 we observe an outlier from Louisiana in the lowest homeownership group; however, in 2023, and for all other homeownership levels, the observations are from counties in Texas.
+
+##Violin Plot
+
+```{r Q21_2}
 #Violin Plot, outliers labeled by county code
 ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, fill = as.factor(year))) +
   geom_violin(trim = FALSE, alpha = 0.7) +
@@ -2358,7 +2571,14 @@ ggplot(fred_data_binned, aes(x = interaction(home_bin, year), y = EQFXSUBPRIME, 
     x = "Home Ownership Bin + Year",
     y = "Subprime Mortgage Rate",
     fill = "Year"
-  ) +
-  theme_minimal(base_size = 16) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  )  +
+  scale_y_continuous(labels = scales::percent_format())  +
+  theme_minimal(base_size = 12) +
+  theme(
+    plot.title = element_text(hjust = 0.5, face = "bold"),
+    legend.position = "right",
+    axis.text.x = element_text(angle = 45, hjust = 1)
+    )
 ```
+
+The box plot provided a lot of useful information, but it hides some of the changes in the distribution within the interquartile range. The violin plot fills this gap by highlighting important shifts in the distribution of subprime mortgages by homeownership between 2021 and 2023. For homeownership below 60%, the distribution becomes flatter, while for the 60–70% group it becomes more concentrated. For the 70–80% homeownership group, subprime rates remain relatively similar across the two years. In contrast, for homeownership of 80% or more, the concentration of subprime mortgage rates shifts to lower values (from two concentrated regions to a single one around 30%).

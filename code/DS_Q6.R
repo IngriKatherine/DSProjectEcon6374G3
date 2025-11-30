@@ -68,9 +68,14 @@ ggplot(avg_plot_data, aes(x = state_code, y = avg_value, fill = loan_type_label)
 
 #6c
 #Record Variable
-g3lar$property_type <- recode(g3lar$construction_method,
+g3lar$property_type <- recode(g3lar$manufactured_home_secured_property_type,
                                  "1" = "Site-built",
-                                 "2" = "Manufactured housing")
+                                 "2" = "Manufactured housing",
+                              "Not appliacble" = "Not applicable")
+
+# Replace NA with "Not applicable"
+g3lar$property_type[is.na(g3lar$property_type)] <- "Not applicable"
+
 #table creation and output
 table_6c <- g3lar %>%
   group_by(activity_year, property_type) %>%
@@ -160,4 +165,8 @@ ggplot(g3lar %>% filter(occupancy_type == "Investment property"),
   ) +
   scale_y_continuous(labels = scales::comma) +
   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+
+
 
